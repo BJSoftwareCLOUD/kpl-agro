@@ -760,6 +760,18 @@ function seed() {
   }
   D.ventas.sort((a, b) => a.fecha.localeCompare(b.fecha)).forEach((v, i) => v.num = 1001 + i);
   D.compras.sort((a, b) => a.fecha.localeCompare(b.fecha)).forEach((v, i) => v.num = 501 + i);
+  // Kardex coherente: inventario inicial y conteo físico para que ningún saldo quede negativo
+  D.productos.forEach(p => {
+    const mv = [];
+    D.compras.forEach(c => c.lineas.forEach(l => l.productoId === p.id && mv.push([c.fecha, l.cant])));
+    D.ventas.forEach(v => v.lineas.forEach(l => l.productoId === p.id && mv.push([v.fecha, -l.cant])));
+    mv.sort((a, b) => a[0].localeCompare(b[0]));
+    let run = 0, min = 0; mv.forEach(m => { run += m[1]; min = Math.min(min, run); });
+    const ini = Math.ceil(-min) + (mv.length ? 10 : 0), first = mv.length ? addDays(mv[0][0], -1) : addDays(today(), -330);
+    if (ini > 0) D.ajustes.push({ id: uid(), fecha: first, productoId: p.id, cant: ini, motivo: "Inventario inicial", usuario: "Carlos Peralta", updated: 1 });
+    const diff = r2(p.stock - (ini + run));
+    if (diff) D.ajustes.push({ id: uid(), fecha: today(), productoId: p.id, cant: diff, motivo: "Conteo físico", usuario: "José Almonte", updated: 9e15 });
+  });
   const t = today(); const cl = n => D.clientes[n].id; const pr = n => D.productos[n];
   const Q = (num, dAgo, ci, items, estado, notas = "") => {
     const c = D.clientes[ci]; const exp = c.tipo === "Exportación";
@@ -1043,7 +1055,7 @@ function render() {
 }
 
 /* ---------------- Login ---------------- */
-const APP_VERSION = "2026.11.13-2";
+const APP_VERSION = "2026.11.13-3";
 const VENDOR = { nombre: "SP BJ SOFTWARE", instagram: "@bjsoftware", telefono: "849-473-3173" };
 /* Logo de BJ Software: hexágono con cubo */
 const bjHex = (size = 40) => `<svg viewBox="0 0 64 64" width="${size}" height="${size}" role="img" aria-label="BJ Software"><polygon points="32,5 55.4,18.5 55.4,45.5 32,59 8.6,45.5 8.6,18.5" fill="none" stroke="#F28C1B" stroke-width="5" stroke-linejoin="round"/><polygon points="32,19 43.5,25.5 32,32 20.5,25.5" fill="#FFB65C"/><polygon points="20.5,25.5 32,32 32,45 20.5,38.5" fill="#F59B2E"/><polygon points="43.5,25.5 32,32 32,45 43.5,38.5" fill="#DB720C"/></svg>`;
@@ -1247,11 +1259,11 @@ VIEWS.dashboard = el => {
 /* ---------------- Productos ---------------- */
 VIEWS.productos = el => {
   const P = store.all("productos"); const cats = [...new Set(P.map(p => p.categoria))].sort();
-  const f = { q: "", cat: "", stock: "todos" }; const pg = pager("productos", [12, 24, 48]);
+  const f = { q: "", cat: "", stock: "todos" }; const pg = pager("productos", [12, 24, 48]); let cur = [];
   const editable = canEditProducts();
   el.innerHTML = `<div class="vhead"><div><h1>Productos</h1><p>${P.length} productos en catálogo${can("finanzas.ver") ? " · inventario valorado en " + money(P.reduce((a, p) => a + Math.max(0, p.stock) * p.costo, 0)) : ""}</p></div>
     <div class="acts"><div class="seg" role="group" aria-label="Vista"><button data-pv="grid" class="${S.prodView === "grid" ? "on" : ""}" aria-label="Cuadrícula">${ic("i-grid", "")}</button><button data-pv="list" class="${S.prodView === "list" ? "on" : ""}" aria-label="Lista">${ic("i-rows")}</button></div>
-    ${editable ? `<button class="btn pri" data-new>${ic("i-plus")}<span class="lbl">Nuevo producto</span></button>` : ""}</div></div>
+    ${exportBtns()}${editable ? `<button class="btn pri" data-new>${ic("i-plus")}<span class="lbl">Nuevo producto</span></button>` : ""}</div></div>
     <div class="toolbar"><label class="searchbox">${ic("i-search")}<input class="input" placeholder="Buscar por nombre o SKU" data-q aria-label="Buscar"></label>
     <select class="input" style="width:auto" data-cat aria-label="Categoría"><option value="">Todas las categorías</option>${cats.map(c => `<option>${esc(c)}</option>`).join("")}</select>
     <div class="seg" data-stock><button data-s="todos" class="on">Todos</button><button data-s="bajo">Stock bajo</button><button data-s="agotado">Agotados</button></div></div>
@@ -1259,7 +1271,7 @@ VIEWS.productos = el => {
   $$(".seg [data-pv] svg", el).forEach(s => { s.style.width = "18px"; s.style.height = "18px"; });
   const draw = () => {
     const q = norm(f.q);
-    let list = P.filter(p => (!q || norm(p.nombre + " " + p.sku).includes(q)) && (!f.cat || p.categoria === f.cat) && (f.stock === "todos" || (f.stock === "bajo" ? p.stock > 0 && p.stock <= p.minimo : p.stock <= 0)))
+    let list = cur = P.filter(p => (!q || norm(p.nombre + " " + p.sku).includes(q)) && (!f.cat || p.categoria === f.cat) && (f.stock === "todos" || (f.stock === "bajo" ? p.stock > 0 && p.stock <= p.minimo : p.stock <= 0)))
       .sort((a, b) => (b.activo !== false) - (a.activo !== false) || a.nombre.localeCompare(b.nombre));
     const out = $("[data-out]", el);
     if (!list.length) { out.innerHTML = `<div class="panel empty">${ic("i-box")}<b>No hay productos con esos filtros</b>${editable ? "Cambia la búsqueda o crea un producto nuevo." : "Cambia la búsqueda."}</div>`; return; }
@@ -1279,6 +1291,14 @@ VIEWS.productos = el => {
     }
   };
   pg.bind($("[data-out]", el), () => draw());
+  bindExport(el, () => { const sc = can("finanzas.ver") || canEditProducts();
+    const cols = [{ h: "SKU" }, { h: "Producto" }, { h: "Categoría" }, { h: "Unidad" }, ...(sc ? [{ h: "Costo", r: 1 }] : []), { h: "Precio", r: 1 }, { h: "Existencia", r: 1 }, { h: "Mínimo", r: 1 }, { h: "Estado" }, ...(sc ? [{ h: "Valor al costo", r: 1 }] : [])];
+    const est = p => p.activo === false ? "Inactivo" : p.stock <= 0 ? "Agotado" : p.stock <= p.minimo ? "Stock bajo" : "Disponible";
+    const row = (p, raw) => [p.sku, p.nombre, p.categoria, p.unidad, ...(sc ? [raw ? p.costo : money(p.costo)] : []), raw ? p.precio : money(p.precio), raw ? p.stock : qty(p.stock), raw ? p.minimo : qty(p.minimo), est(p), ...(sc ? [raw ? r2(Math.max(0, p.stock) * p.costo) : money(Math.max(0, p.stock) * p.costo)] : [])];
+    const val = cur.reduce((a, p) => a + Math.max(0, p.stock) * p.costo, 0);
+    return { tab: "productos", file: "listado-productos", heading: "Listado de productos", title: "Productos", period: filtroTxt([f.q && "Búsqueda: " + f.q, f.cat, f.stock === "bajo" ? "Stock bajo" : f.stock === "agotado" ? "Agotados" : ""]),
+      kpis: [["Productos", String(cur.length)], ["Con stock bajo", String(cur.filter(p => p.stock > 0 && p.stock <= p.minimo).length)], ["Agotados", String(cur.filter(p => p.stock <= 0).length)], ...(sc ? [["Valor al costo", money(val)]] : [])], note: "",
+      cols, rows: cur.map(p => row(p)), xrows: cur.map(p => row(p, true)), foot: sc ? cols.map((c, i) => i === 0 ? "Total" : i === cols.length - 1 ? money(val) : "") : null }; });
   $("[data-q]", el).addEventListener("input", debounce(e => { f.q = e.target.value; pg.reset(); draw(); }, 120));
   $("[data-cat]", el).onchange = e => { f.cat = e.target.value; pg.reset(); draw(); };
   $("[data-stock]", el).onclick = e => { const b = e.target.closest("button"); if (!b) return; f.stock = b.dataset.s; pg.reset(); $$("[data-stock] button", el).forEach(x => x.classList.toggle("on", x === b)); draw(); };
@@ -1366,14 +1386,14 @@ const PARTY = {
 const waLink = (tel, text = "") => { let n = String(tel || "").replace(/\D/g, ""); if (!n) return ""; if (n.length === 10) n = "1" + n; return `https://wa.me/${n}${text ? "?text=" + encodeURIComponent(text) : ""}`; };
 function partyView(col) {
   return el => {
-    const cfg = PARTY[col]; let q = "", tipo = ""; const pg = pager(col);
+    const cfg = PARTY[col]; let q = "", tipo = "", cur = []; const pg = pager(col);
     const docs = col === "clientes" ? ventasOK() : comprasOK(); const key = col === "clientes" ? "clienteId" : "proveedorId";
     const tot = {}; docs.forEach(d => tot[d[key]] = (tot[d[key]] || 0) + toDOP(d));
-    el.innerHTML = `<div class="vhead"><div><h1>${cfg.title}</h1><p>${store.all(col).length} registrados</p></div><div class="acts"><button class="btn pri" data-new>${ic("i-plus")}<span class="lbl">Nuevo ${cfg.one}</span></button></div></div>
+    el.innerHTML = `<div class="vhead"><div><h1>${cfg.title}</h1><p>${store.all(col).length} registrados</p></div><div class="acts">${exportBtns()}<button class="btn pri" data-new>${ic("i-plus")}<span class="lbl">Nuevo ${cfg.one}</span></button></div></div>
     <div class="toolbar"><label class="searchbox">${ic("i-search")}<input class="input" placeholder="Buscar por nombre, RNC o ciudad" data-q aria-label="Buscar"></label>
     ${col === "clientes" ? `<div class="seg" data-tipo><button class="on" data-t="">Todos</button><button data-t="Local">Locales</button><button data-t="Exportación">Exportación</button></div>` : ""}</div><div data-out></div>`;
     const draw = () => {
-      const n = norm(q); let list = store.all(col).filter(c => (!n || norm(c.nombre + " " + c.rnc + " " + c.ciudad + " " + (c.pais || "")).includes(n)) && (!tipo || c.tipo === tipo)).sort((a, b) => a.nombre.localeCompare(b.nombre));
+      const n = norm(q); let list = cur = store.all(col).filter(c => (!n || norm(c.nombre + " " + c.rnc + " " + c.ciudad + " " + (c.pais || "")).includes(n)) && (!tipo || c.tipo === tipo)).sort((a, b) => a.nombre.localeCompare(b.nombre));
       const all = list; list = pg.slice(all);
       $("[data-out]", el).innerHTML = list.length ? `<div class="tbl-wrap"><table class="t cards"><thead><tr><th>Nombre</th>${col === "clientes" ? "<th>Tipo</th><th>Ubicación</th>" : "<th>Suministra</th><th>Ubicación</th>"}<th>Teléfono</th><th>RNC / Tax ID</th><th class="r">${col === "clientes" ? "Comprado" : "Compras"}</th></tr></thead><tbody>
       ${list.map(c => `<tr class="click" data-id="${c.id}"><td class="full"><div class="cell-main"><span class="avatar" style="background:${col === "clientes" ? (c.tipo === "Exportación" ? "var(--sky)" : "var(--brand)") : "var(--sun)"}">${initials(c.nombre)}</span><span><b>${esc(c.nombre)}</b><small>${esc(c.email || c.contacto || "")}</small></span></div></td>
@@ -1382,6 +1402,11 @@ function partyView(col) {
         : `<div class="panel empty">${ic("i-users")}<b>Sin resultados</b>Cambia la búsqueda o registra un ${cfg.one} nuevo.</div>`;
     };
     pg.bind($("[data-out]", el), () => draw());
+    bindExport(el, () => { const isCli = col === "clientes"; const money_ = can("finanzas.ver") || isCli;
+      const cols = [{ h: "Nombre" }, ...(isCli ? [{ h: "Tipo" }, { h: "País" }] : [{ h: "Suministra" }]), { h: "Ciudad" }, { h: "RNC / Tax ID" }, { h: "Teléfono" }, { h: "Correo" }, ...(isCli ? [{ h: "Contacto" }] : []), ...(money_ ? [{ h: isCli ? "Comprado" : "Compras", r: 1 }] : [])];
+      const row = (c, raw) => [c.nombre, ...(isCli ? [c.tipo, c.pais || ""] : [c.suministra || ""]), c.ciudad || "", c.rnc || "", c.telefono || "", c.email || "", ...(isCli ? [c.contacto || ""] : []), ...(money_ ? [raw ? r2(tot[c.id] || 0) : money(tot[c.id] || 0)] : [])];
+      return { tab: col, file: "listado-" + col, heading: "Listado de " + cfg.title.toLowerCase(), title: cfg.title, period: filtroTxt([q && "Búsqueda: " + q, tipo]), kpis: [["Registros", String(cur.length)]], note: "",
+        cols, rows: cur.map(c => row(c)), xrows: cur.map(c => row(c, true)), foot: null }; });
     $("[data-q]", el).addEventListener("input", debounce(e => { q = e.target.value; pg.reset(); draw(); }, 120));
     $("[data-tipo]", el)?.addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; tipo = b.dataset.t; pg.reset(); $$("[data-tipo] button", el).forEach(x => x.classList.toggle("on", x === b)); draw(); });
     $("[data-new]", el).onclick = () => partyForm(col);
@@ -1561,15 +1586,16 @@ function docList(o) {
   return el => {
     const f = { desde: addDays(today(), -90), hasta: "", party: "", estado: "", q: "" }; const pg = pager(o.col);
     const partyCol = o.party, key = partyCol === "clientes" ? "clienteId" : "proveedorId";
-    el.innerHTML = `<div class="vhead"><div><h1>${o.title}</h1><p data-sum></p></div><div class="acts">${o.extra || ""}${can(o.newView) ? `<a class="btn ${o.newHot ? "hot" : "pri"}" href="#${o.newView}">${ic("i-plus")}<span class="lbl">${o.newLabel}</span></a>` : ""}</div></div>
+    el.innerHTML = `<div class="vhead"><div><h1>${o.title}</h1><p data-sum></p></div><div class="acts">${o.extra || ""}${exportBtns()}${can(o.newView) ? `<a class="btn ${o.newHot ? "hot" : "pri"}" href="#${o.newView}">${ic("i-plus")}<span class="lbl">${o.newLabel}</span></a>` : ""}</div></div>
       <section class="panel" style="margin-bottom:14px;padding:14px"><div class="grid g4 keep2" style="align-items:end">
         <label class="field"><span>Desde</span><input class="input" type="date" data-f="desde" value="${f.desde}"></label><label class="field"><span>Hasta</span><input class="input" type="date" data-f="hasta"></label>
         <label class="field"><span>${partyCol === "clientes" ? "Cliente" : "Proveedor"}</span><select class="input" data-f="party"><option value="">Todos</option>${store.all(partyCol).slice().sort((a, b) => a.nombre.localeCompare(b.nombre)).map(p => `<option value="${p.id}">${esc(p.nombre)}</option>`).join("")}</select></label>
         <label class="field"><span>Número</span><input class="input" data-f="q" inputmode="numeric" placeholder="Ej. ${o.start}"></label></div>
         <div class="seg" data-est style="margin-top:12px"><button class="on" data-v="">Todas</button>${o.estados.map(e => `<button data-v="${e}">${e === "Pendiente" && o.col === "ventas" ? "Por cobrar" : e === "Pendiente" && o.col === "compras" ? "Por pagar" : e + (o.col === "cotizaciones" ? "s" : "s")}</button>`).join("")}</div></section>
       <div data-out></div>`;
+    let cur = [];
     const draw = () => {
-      const list = store.all(o.col).filter(d => inRange(d.fecha, f.desde, f.hasta) && (!f.party || d[key] === f.party) && (!f.estado || d.estado === f.estado) && (!f.q || String(d.num).includes(f.q)))
+      const list = cur = store.all(o.col).filter(d => inRange(d.fecha, f.desde, f.hasta) && (!f.party || d[key] === f.party) && (!f.estado || d.estado === f.estado) && (!f.q || String(d.num).includes(f.q)))
         .sort((a, b) => b.fecha.localeCompare(a.fecha) || b.num - a.num);
       const vivos = list.filter(d => d.estado !== "Anulada" && d.estado !== "Rechazada");
       $("[data-sum]", el).textContent = `${list.length} documentos · ${money(vivos.reduce((a, d) => a + toDOP(d), 0))} en el período`;
@@ -1584,6 +1610,15 @@ function docList(o) {
     };
     el.addEventListener("input", debounce(e => { const k = e.target.dataset.f; if (k) { f[k] = e.target.value; pg.reset(); draw(); } }, 150));
     pg.bind($("[data-out]", el), () => draw());
+    bindExport(el, () => { const pn = partyCol === "clientes" ? cliente : proveedor; const isC = o.col === "compras";
+      const vivos = cur.filter(d => d.estado !== "Anulada" && d.estado !== "Rechazada");
+      return { tab: o.col, file: "listado-" + o.col, heading: "Listado de " + o.title.toLowerCase(), title: o.title, sheet: o.title,
+        period: filtroTxt([`Del ${fdate(f.desde)}${f.hasta ? " al " + fdate(f.hasta) : " a hoy"}`, f.party && pn(f.party).nombre, f.estado]),
+        kpis: [["Documentos", String(cur.length)], ["Total (sin anulados)", money(vivos.reduce((a, d) => a + toDOP(d), 0)), "en pesos"]], note: "",
+        cols: [{ h: "No." }, { h: isC ? "Proveedor" : "Cliente" }, { h: "Fecha" }, { h: isC ? "Comprobante" : "Tipo" }, { h: "Usuario" }, { h: "Total", r: 1 }, { h: "Estado" }],
+        rows: cur.map(d => ["#" + d.num, pn(d[key]).nombre, fdate(d.fecha), isC ? (d.documento || "—") : d.tipo, d.usuario || "", money(d.total, d.moneda || "DOP"), d.estado]),
+        xrows: cur.map(d => [d.num, pn(d[key]).nombre, d.fecha, isC ? (d.documento || "") : d.tipo + (d.moneda === "USD" ? " (US$)" : ""), d.usuario || "", d.total, d.estado]),
+        foot: ["Total", "", "", "", "", money(vivos.reduce((a, d) => a + toDOP(d), 0)), ""] }; });
     $("[data-est]", el).onclick = e => { const b = e.target.closest("button"); if (!b) return; f.estado = b.dataset.v; pg.reset(); $$("[data-est] button", el).forEach(x => x.classList.toggle("on", x === b)); draw(); };
     el.addEventListener("click", e => {
       const pr = e.target.closest("[data-print]"); if (pr) { e.stopPropagation(); printDoc(o.kind, store.get(o.col, pr.dataset.print)); return; }
@@ -1889,8 +1924,8 @@ function reportTableHTML(R, rows) {
 const repCols = R => R.cols.map((c, i) => [c, i]).filter(([c]) => !c.screen);
 function printReport(R) {
   const c = store.config; const cols = repCols(R);
-  $("#print").innerHTML = `<div class="ph"><div>${c.logo ? `<img src="${c.logo}" alt=""><br>` : `<div style="width:56px">${kplLogo(true)}</div>`}<b style="font-size:13pt">${esc(c.empresa)}</b><br>RNC ${esc(c.rnc)}</div><div style="text-align:right"><h1>Reporte de ${esc(R.title.toLowerCase())}</h1>${esc(R.period)}<br><span style="color:#555">Generado el ${fdate(today())} por ${esc(S.user.nombre)}</span></div></div>
-    <div style="display:grid;grid-template-columns:repeat(${Math.min(4, R.kpis.length)},1fr);gap:8px;margin-top:12px">${R.kpis.map(k => `<div style="border:1px solid #ccc;border-radius:6px;padding:6px 8px"><div style="font-size:8.5pt;color:#555">${esc(k[0])}</div><b style="font-size:12pt">${esc(k[1])}</b>${k[2] ? `<div style="font-size:8pt;color:#555">${esc(k[2])}</div>` : ""}</div>`).join("")}</div>
+  $("#print").innerHTML = `<div class="ph"><div>${c.logo ? `<img src="${c.logo}" alt=""><br>` : `<div style="width:56px">${kplLogo(true)}</div>`}<b style="font-size:13pt">${esc(c.empresa)}</b><br>RNC ${esc(c.rnc)}</div><div style="text-align:right"><h1>${esc(repHeading(R))}</h1>${esc(R.period)}<br><span style="color:#555">Generado el ${fdate(today())} por ${esc(S.user.nombre)}</span></div></div>
+    <div style="display:grid;grid-template-columns:repeat(${Math.max(1, Math.min(4, R.kpis.length))},1fr);gap:8px;margin-top:12px">${R.kpis.map(k => `<div style="border:1px solid #ccc;border-radius:6px;padding:6px 8px"><div style="font-size:8.5pt;color:#555">${esc(k[0])}</div><b style="font-size:12pt">${esc(k[1])}</b>${k[2] ? `<div style="font-size:8pt;color:#555">${esc(k[2])}</div>` : ""}</div>`).join("")}</div>
     ${R.note ? `<p style="font-size:9pt;color:#555">${esc(R.note)}</p>` : ""}
     <table><thead><tr>${cols.map(([c]) => `<th class="${c.r ? "r" : ""}">${esc(c.h)}</th>`).join("")}</tr></thead><tbody>${R.rows.map(r => `<tr>${cols.map(([cc, i]) => `<td class="${cc.r ? "r" : ""}">${esc(cellT(r[i]))}</td>`).join("")}</tr>`).join("") || `<tr><td colspan="${cols.length}">Sin datos en este período.</td></tr>`}</tbody>
     ${R.foot ? `<tfoot><tr>${cols.map(([cc, i]) => `<td class="${cc.r ? "r" : ""}" style="font-weight:800;border-top:2px solid #111">${esc(R.foot[i])}</td>`).join("")}</tr></tfoot>` : ""}</table>
@@ -1911,12 +1946,12 @@ async function pdfReport(R, mode = "view") {
   try { if (logo) doc.addImage(logo, logo.startsWith("data:image/png") ? "PNG" : "JPEG", M, 30, 34, 50); } catch {}
   doc.setFont("helvetica", "bold"); doc.setFontSize(14); doc.setTextColor(19, 33, 26); doc.text(pdfText(c.empresa), M + 44, 46);
   doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.setTextColor(97, 112, 102); doc.text(pdfText("RNC " + c.rnc + " · " + c.telefono), M + 44, 60);
-  doc.setFont("helvetica", "bold"); doc.setFontSize(13); doc.setTextColor(19, 33, 26); doc.text(pdfText("Reporte de " + R.title.toLowerCase()), W - M, 46, { align: "right" });
+  doc.setFont("helvetica", "bold"); doc.setFontSize(13); doc.setTextColor(19, 33, 26); doc.text(pdfText(repHeading(R)), W - M, 46, { align: "right" });
   doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.setTextColor(97, 112, 102); doc.text(pdfText(R.period), W - M, 60, { align: "right" }); doc.text(pdfText("Generado el " + fdate(today()) + " por " + S.user.nombre), W - M, 72, { align: "right" });
   doc.setDrawColor(212, 39, 31); doc.setLineWidth(2); doc.line(M, 88, W - M, 88);
-  const kw = (W - 2 * M - 8 * (R.kpis.length - 1)) / R.kpis.length; let y = 100;
+  let y = 100; const kw = R.kpis.length ? (W - 2 * M - 8 * (R.kpis.length - 1)) / R.kpis.length : 0;
   R.kpis.forEach((k, i) => { const x = M + i * (kw + 8); doc.setDrawColor(218, 227, 214); doc.setLineWidth(.8); doc.roundedRect(x, y, kw, 46, 5, 5); doc.setFontSize(8); doc.setTextColor(97, 112, 102); doc.text(pdfText(k[0]), x + 8, y + 13); doc.setFont("helvetica", "bold"); doc.setFontSize(11.5); doc.setTextColor(19, 33, 26); doc.text(pdfText(k[1]), x + 8, y + 29); doc.setFont("helvetica", "normal"); if (k[2]) { doc.setFontSize(7.5); doc.setTextColor(97, 112, 102); doc.text(pdfText(k[2]), x + 8, y + 40); } });
-  y += 58; if (R.note) { doc.setFontSize(8.5); doc.setTextColor(97, 112, 102); doc.text(pdfText(R.note), M, y + 4); y += 12; }
+  if (R.kpis.length) y += 58; else y -= 4; if (R.note) { doc.setFontSize(8.5); doc.setTextColor(97, 112, 102); doc.text(pdfText(R.note), M, y + 4); y += 12; }
   const colStyles = {}; cols.forEach(([cc], j) => { if (cc.r) colStyles[j] = { halign: "right" }; });
   doc.autoTable({
     startY: y + 4, margin: { left: M, right: M, bottom: 40 },
@@ -1928,20 +1963,41 @@ async function pdfReport(R, mode = "view") {
   });
   const n = doc.internal.getNumberOfPages(), H = doc.internal.pageSize.getHeight();
   for (let i = 1; i <= n; i++) { doc.setPage(i); doc.setFontSize(8); doc.setTextColor(140, 150, 144); doc.text(pdfText(c.empresa + " · Sistema por SP BJ SOFTWARE"), M, H - 20); doc.text(`Página ${i} de ${n}`, W - M, H - 20, { align: "right" }); }
-  const name = `reporte-${R.tab}-${today()}.pdf`;
+  const name = `${R.file || "reporte-" + R.tab}-${today()}.pdf`;
   if (mode === "download") return doc.save(name);
   const url = URL.createObjectURL(doc.output("blob"));
-  const m = modal({ title: "Reporte de " + R.title.toLowerCase(), size: "wide", body: `<iframe src="${url}" title="Vista del PDF" style="width:100%;height:min(70vh,760px);border:1px solid var(--line);border-radius:12px;background:#fff"></iframe><p class="small muted" style="margin:8px 0 0">Si tu navegador no muestra el PDF aquí, usa Descargar.</p>`,
+  const m = modal({ title: repHeading(R), size: "wide", body: `<iframe src="${url}" title="Vista del PDF" style="width:100%;height:min(70vh,760px);border:1px solid var(--line);border-radius:12px;background:#fff"></iframe><p class="small muted" style="margin:8px 0 0">Si tu navegador no muestra el PDF aquí, usa Descargar.</p>`,
     foot: `<button class="btn" data-close>Cerrar</button><button class="btn" data-dl>${ic("i-down")}Descargar PDF</button><button class="btn pri" data-pp>${ic("i-print")}Imprimir</button>` });
   m.$("[data-dl]").onclick = () => doc.save(name);
   m.$("[data-pp]").onclick = () => { try { m.$("iframe").contentWindow.print(); } catch { printReport(R); } };
   const obs = new MutationObserver(() => { if (!m.el.isConnected) { obs.disconnect(); URL.revokeObjectURL(url); } }); obs.observe(document.body, { childList: true });
 }
+const repHeading = R => R.heading || "Reporte de " + R.title.toLowerCase();
+const XLSX_LIB = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+async function excelReport(R) {
+  try { await loadScript(XLSX_LIB); } catch { toast("No se pudo cargar el generador de Excel. Revisa la conexión a internet.", "err"); return; }
+  const cols = repCols(R); const c = store.config;
+  const body = R.xrows ? R.xrows : R.rows.map(r => cols.map(([, i]) => cellT(r[i])));
+  const aoa = [[c.empresa], [repHeading(R)], [R.period + " · generado el " + fdate(today()) + " por " + S.user.nombre], []];
+  if (R.kpis.length) { R.kpis.forEach(k => aoa.push([k[0], k[1], k[2] || ""])); aoa.push([]); }
+  const hr = aoa.length; aoa.push(cols.map(([cc]) => cc.h)); body.forEach(r => aoa.push(r));
+  if (R.foot && R.rows.length) aoa.push(cols.map(([, i]) => R.foot[i]));
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws["!cols"] = cols.map(([cc], j) => ({ wch: Math.min(48, Math.max(cc.h.length, ...body.slice(0, 300).map(r => String(r[j] ?? "").length)) + 2) }));
+  ws["!merges"] = [0, 1, 2].map(r => ({ s: { r, c: 0 }, e: { r, c: Math.max(0, cols.length - 1) } }));
+  ws["!autofilter"] = { ref: XLSX.utils.encode_range({ s: { r: hr, c: 0 }, e: { r: hr + body.length, c: cols.length - 1 } }) };
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, (R.sheet || R.title).slice(0, 31).replace(/[\\/?*[\]:]/g, " "));
+  XLSX.writeFile(wb, `${R.file || "reporte-" + R.tab}-${today()}.xlsx`); toast("Excel generado");
+}
+const exportBtns = () => `<button class="btn" data-exp="pdf" title="Ver en PDF">${ic("i-quote")}<span class="lbl">PDF</span></button><button class="btn" data-exp="xlsx" title="Descargar Excel">${ic("i-grid")}<span class="lbl">Excel</span></button>`;
+function bindExport(el, build) { $$("[data-exp]", el).forEach(b => b.onclick = () => { const R = build(); if (!R.rows.length) return toast("No hay datos para exportar con estos filtros.", "err"); b.dataset.exp === "pdf" ? pdfReport(R) : excelReport(R); }); }
+const filtroTxt = parts => parts.filter(Boolean).join(" · ") || "Todos los registros";
+
 VIEWS.reportes = el => {
   const t = today(); const f = S.repF ||= { desde: t.slice(0, 8) + "01", hasta: t, tab: "ventas" }; const pg = pager("reportes", [15, 30, 60]); let R;
   el.innerHTML = `<div class="vhead"><div><h1>Reportes</h1><p>Información para decidir: qué se vende, cuánto se gana, quién debe y cómo van los pedidos.</p></div>
     <div class="acts"><input class="input" type="date" data-f="desde" value="${f.desde}" style="width:auto" aria-label="Desde"><input class="input" type="date" data-f="hasta" value="${f.hasta}" style="width:auto" aria-label="Hasta">
-    <button class="btn" data-print>${ic("i-print")}Imprimir</button><button class="btn" data-pdf>${ic("i-quote")}Ver PDF</button><button class="btn" data-csv>${ic("i-down")}CSV</button></div></div>
+    <button class="btn" data-print>${ic("i-print")}Imprimir</button><button class="btn" data-pdf>${ic("i-quote")}Ver PDF</button><button class="btn" data-xls>${ic("i-grid")}Excel</button><button class="btn" data-csv>${ic("i-down")}CSV</button></div></div>
     <div class="tabs" data-tabs>${REP_TABS.map(([k, l]) => `<button data-t="${k}" class="${f.tab === k ? "on" : ""}">${l}</button>`).join("")}</div><div data-out></div>`;
   const out = $("[data-out]", el);
   const draw = () => {
@@ -1957,15 +2013,16 @@ VIEWS.reportes = el => {
   $("[data-csv]", el).onclick = () => downloadText(`reporte-${f.tab}-${f.desde}-a-${f.hasta}.csv`, csv(R.csv));
   $("[data-print]", el).onclick = () => printReport(R);
   $("[data-pdf]", el).onclick = () => pdfReport(R);
+  $("[data-xls]", el).onclick = () => excelReport(R);
   draw();
 };
 
 /* ---------------- Kardex ---------------- */
 VIEWS.kardex = el => {
   const P = store.all("productos").slice().sort((a, b) => a.nombre.localeCompare(b.nombre)); let pid = S.kpid || P[0]?.id;
-  el.innerHTML = `<div class="vhead"><div><h1>Kardex</h1><p>Historial de entradas y salidas de cada producto, con su saldo.</p></div><div class="acts"><button class="btn" data-csv>${ic("i-down")}<span class="lbl">Exportar CSV</span></button>${can("inventario.ajustar") ? `<button class="btn pri" data-adj>${ic("i-adjust")}<span class="lbl">Ajustar existencia</span></button>` : ""}</div></div>
+  el.innerHTML = `<div class="vhead"><div><h1>Kardex</h1><p>Historial de entradas y salidas de cada producto, con su saldo.</p></div><div class="acts">${exportBtns()}<button class="btn" data-csv>${ic("i-down")}<span class="lbl">CSV</span></button>${can("inventario.ajustar") ? `<button class="btn pri" data-adj>${ic("i-adjust")}<span class="lbl">Ajustar existencia</span></button>` : ""}</div></div>
     <div class="toolbar"><select class="input" style="max-width:420px" data-p aria-label="Producto">${P.map(p => `<option value="${p.id}" ${p.id === pid ? "selected" : ""}>${esc(p.nombre)} · ${esc(p.sku)}</option>`).join("")}</select></div><div data-out></div>`;
-  let rows = []; const pg = pager("kardex", [15, 30, 60]);
+  let rows = [], kx = null; const pg = pager("kardex", [15, 30, 60]);
   const draw = () => {
     S.kpid = pid; const p = producto(pid); if (!p) { $("[data-out]", el).innerHTML = `<div class="panel empty">No hay productos.</div>`; return; }
     const mv = [];
@@ -1976,13 +2033,20 @@ VIEWS.kardex = el => {
     let s = r2(p.stock - mv.reduce((a, m) => a + m.ent - m.sal, 0)); const ini = s;
     mv.forEach(m => { s = r2(s + m.ent - m.sal); m.saldo = s; });
     rows = [["Fecha", "Tipo", "Documento", "Tercero", "Entrada", "Salida", "Costo unitario", "Saldo"], ["", "Saldo inicial", "", "", "", "", "", ini], ...mv.map(m => [m.f, m.tipo, m.doc, m.ter, m.ent || "", m.sal || "", m.cu, m.saldo])];
-    const ent = mv.reduce((a, m) => a + m.ent, 0), sal = mv.reduce((a, m) => a + m.sal, 0);
+    const ent = mv.reduce((a, m) => a + m.ent, 0), sal = mv.reduce((a, m) => a + m.sal, 0); kx = { p, mv, ini, ent, sal };
     $("[data-out]", el).innerHTML = `<div class="kpis"><div class="kpi feature"><span class="lbl">Existencia actual</span><span class="val">${qty(p.stock)}</span><span class="delta">${esc(p.unidad)}</span></div><div class="kpi"><span class="lbl">Entradas</span><span class="val up">+${qty(ent)}</span></div><div class="kpi"><span class="lbl">Salidas</span><span class="val down">−${qty(sal)}</span></div><div class="kpi"><span class="lbl">Costo promedio</span><span class="val">${money(p.costo)}</span></div></div>
     <div class="tbl-wrap"><table class="t"><thead><tr><th>Fecha</th><th>Movimiento</th><th>Tercero</th><th class="r">Entrada</th><th class="r">Salida</th><th class="r">Costo unit.</th><th class="r">Saldo</th></tr></thead><tbody>
     ${(() => { const rev = mv.slice().reverse(); const page = pg.slice(rev); const last = pg.st.page >= Math.ceil(rev.length / pg.st.size); return page; })().map(m => `<tr><td>${fdate(m.f)}</td><td><span class="chip ${m.tipo === "Compra" ? "ok" : m.tipo === "Venta" ? "bad" : "warn"} plain">${m.tipo}</span> ${esc(m.doc)}</td><td>${esc(m.ter)}</td><td class="n up">${m.ent ? "+" + qty(m.ent) : ""}</td><td class="n down">${m.sal ? "−" + qty(m.sal) : ""}</td><td class="n">${money(m.cu)}</td><td class="n"><b>${qty(m.saldo)}</b></td></tr>`).join("")}
     ${pg.st.page >= Math.max(1, Math.ceil(mv.length / pg.st.size)) ? `<tr><td>—</td><td><b>Saldo inicial</b></td><td></td><td></td><td></td><td></td><td class="n"><b>${qty(ini)}</b></td></tr>` : ""}</tbody></table></div>${pg.html(mv.length)}`;
   };
   pg.bind($("[data-out]", el), () => draw());
+  bindExport(el, () => { const { p, mv, ini, ent, sal } = kx;
+    const cols = [{ h: "Fecha" }, { h: "Movimiento" }, { h: "Documento" }, { h: "Tercero" }, { h: "Entrada", r: 1 }, { h: "Salida", r: 1 }, { h: "Costo unit.", r: 1 }, { h: "Saldo", r: 1 }];
+    const rowsT = [["—", "Saldo inicial", "", "", "", "", "", qty(ini)], ...mv.map(m => [fdate(m.f), m.tipo, m.doc, m.ter, m.ent ? "+" + qty(m.ent) : "", m.sal ? "-" + qty(m.sal) : "", money(m.cu), qty(m.saldo)])];
+    const rowsX = [["", "Saldo inicial", "", "", "", "", "", ini], ...mv.map(m => [m.f, m.tipo, m.doc, m.ter, m.ent || "", m.sal || "", m.cu, m.saldo])];
+    return { tab: "kardex", file: "kardex-" + p.sku, heading: "Kardex de " + p.nombre, title: "Kardex", period: p.sku + " · " + p.unidad,
+      kpis: [["Existencia actual", qty(p.stock), p.unidad], ["Entradas", "+" + qty(ent)], ["Salidas", "-" + qty(sal)], ["Costo promedio", money(p.costo)]], note: "",
+      cols, rows: rowsT, xrows: rowsX, foot: ["", "Totales", "", "", "+" + qty(ent), "-" + qty(sal), "", qty(p.stock)] }; });
   $("[data-p]", el).onchange = e => { pid = e.target.value; pg.reset(); draw(); };
   $("[data-adj]", el)?.addEventListener("click", () => ajusteForm(producto(pid)));
   $("[data-csv]", el).onclick = () => downloadText(`kardex-${producto(pid)?.sku || ""}.csv`, csv(rows));

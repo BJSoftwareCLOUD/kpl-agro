@@ -68,7 +68,7 @@ Para quitarle el acceso a alguien, desactívalo en **Usuarios y roles**. Tambié
 
 - **Almacenamiento.** Todos los documentos viven en una sola tabla, `registros (coleccion, id, data jsonb)`. Esto permite agregar campos sin migraciones.
 - **Sincronización.** Es en tiempo real con Supabase Realtime, y se mantiene una copia local en el navegador.
-- **Reportes.** Cada reporte se puede imprimir, ver en PDF (se genera en el navegador con jsPDF, cargado desde cdnjs) o exportar a CSV.
+- **Reportes y listados.** Cada reporte se puede imprimir, ver en PDF o descargar en Excel/CSV. Los listados de ventas, compras, cotizaciones, clientes, proveedores, productos y kardex se exportan a PDF o Excel respetando los filtros aplicados. PDF y Excel se generan en el navegador con jsPDF y SheetJS (cargados desde cdnjs).
 - **Respaldo.** **Configuración → Respaldo** descarga todo en JSON, fotos incluidas. Hazlo cada semana.
 - **Fotos.** Se comprimen a unos 900 px antes de guardarse.
 - **Límite conocido.** Si dos personas venden el mismo producto en el mismo segundo, el stock final puede quedar desfasado. La siguiente mejora es mover el descuento de stock a una función `rpc` de Postgres.
