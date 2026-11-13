@@ -1,0 +1,16 @@
+{
+  "name": "KPL AGRO · Ventas y exportación",
+  "short_name": "KPL AGRO",
+  "description": "Facturación, cotizaciones, inventario y órdenes de trabajo.",
+  "lang": "es-DO",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#10291D",
+  "theme_color": "#10291D",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

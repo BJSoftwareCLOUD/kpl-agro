@@ -1,2 +1,77 @@
-# kpl-agro
-KPL AGRO - Sistema de Facturación e Inventario
+# KPL AGRO · Sistema de ventas y exportación
+
+Aplicación web y web-app instalable para la facturación, las cotizaciones, el inventario, las compras, las órdenes de trabajo, el presupuesto y los reportes de KPL AGRO (ajíes y productos agrícolas).
+
+Desarrollado por **SP BJ SOFTWARE** · Instagram @bjsoftware · 849-473-3173.
+
+## Archivos
+
+| Archivo | Para qué sirve |
+|---|---|
+| `index.html` | Toda la aplicación (HTML, CSS y JavaScript en un solo archivo) |
+| `manifest.webmanifest`, `icon-192.png`, `icon-512.png` | Permiten instalarla como app en el celular y en la computadora |
+| `sw.js` | Hace que abra rápido y funcione sin internet (los datos sí necesitan conexión) |
+| `vercel.json` | Encabezados para Vercel |
+| `supabase/schema.sql` | Tabla, permisos por rol y tiempo real en Supabase |
+
+Sin Supabase configurado, la app arranca en **modo demostración**: carga datos de ejemplo y los guarda solo en ese navegador. Los usuarios de prueba usan la contraseña `demo123`.
+
+## 1. Supabase
+
+1. Crea un proyecto en [supabase.com](https://supabase.com).
+2. Abre **SQL Editor**, pega el contenido de `supabase/schema.sql` y pulsa **Run**.
+3. En **Authentication → Sign In / Providers → Email**, desactiva **Confirm email**. Así los usuarios que crees desde el panel entran de inmediato.
+4. En **Authentication → Users → Add user**, crea el usuario del **propietario** con su correo y contraseña.
+5. En **Project Settings → API**, copia la **Project URL** y la clave **anon public**.
+
+## 2. Conectar la app
+
+Tienes dos formas de hacerlo.
+
+- **Opción A (recomendada).** Abre `index.html` y pega los valores al inicio del script:
+  ```js
+  const SUPABASE_URL = "https://xxxx.supabase.co";
+  const SUPABASE_ANON_KEY = "eyJhbGciOi...";
+  ```
+- **Opción B.** Desde la app: **Configuración → Nube**. Pega la URL y la clave y pulsa **Conectar y recargar**. Esta opción solo aplica en ese dispositivo.
+
+La clave *anon* es pública por diseño. La seguridad la dan las reglas RLS del `schema.sql`.
+
+## 3. GitHub y Vercel
+
+1. Crea un repositorio privado en GitHub (por ejemplo `kpl-agro`) y sube **todos** los archivos de esta carpeta.
+2. En Vercel, entra a **Add New → Project**, importa el repositorio y elige **Framework Preset: Other**. No hace falta comando de compilación. Pulsa **Deploy**.
+3. Cada `git push` vuelve a publicar la app automáticamente.
+
+## 4. Primer uso
+
+1. Entra con el correo del propietario. Al ser el primer usuario, el sistema lo registra como **Propietario**.
+2. Ve a **Configuración → Empresa** para poner el nombre, el RNC, el logo, el ITBIS y la tasa del dólar.
+3. Si quieres probar con datos, usa **Configuración → Nube → Cargar datos de ejemplo**. Si no, empieza a crear productos, clientes y proveedores.
+
+## 5. Agregar empleados
+
+1. En Supabase: **Authentication → Users → Add user**, con el correo y la contraseña del empleado.
+2. En la app: **Usuarios y roles → Nuevo usuario**, con el **mismo correo** y su rol (Vendedor o Almacén).
+
+| Rol | Puede |
+|---|---|
+| Propietario | Todo: reportes, ganancias, presupuesto, usuarios y configuración. Anula y elimina. |
+| Vendedor | Facturar, cotizar, clientes, órdenes de trabajo y consultar productos. |
+| Almacén | Compras, productos, proveedores, kardex y órdenes de trabajo. |
+
+Para quitarle el acceso a alguien, desactívalo en **Usuarios y roles**. También puedes borrarlo en Supabase.
+
+## 6. Instalar como app
+
+- **Android / Chrome:** menú ⋮ → *Instalar aplicación*.
+- **iPhone (Safari):** Compartir → *Agregar a inicio*.
+- **Computadora (Chrome o Edge):** ícono de instalar en la barra de direcciones.
+
+## Notas técnicas
+
+- **Almacenamiento.** Todos los documentos viven en una sola tabla, `registros (coleccion, id, data jsonb)`. Esto permite agregar campos sin migraciones.
+- **Sincronización.** Es en tiempo real con Supabase Realtime, y se mantiene una copia local en el navegador.
+- **Respaldo.** **Configuración → Respaldo** descarga todo en JSON, fotos incluidas. Hazlo cada semana.
+- **Fotos.** Se comprimen a unos 900 px antes de guardarse.
+- **Límite conocido.** Si dos personas venden el mismo producto en el mismo segundo, el stock final puede quedar desfasado. La siguiente mejora es mover el descuento de stock a una función `rpc` de Postgres.
