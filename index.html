@@ -272,6 +272,11 @@ table.t td.n{text-align:right;white-space:nowrap}
 .chip.info{background:var(--sky-soft);color:var(--sky)}
 .chip.plain::before{display:none}
 .pager{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 4px;color:var(--muted);font-size:.85rem;flex-wrap:wrap}
+.pager b{color:var(--ink);font-weight:700}
+.pg-ctl{display:flex;align-items:center;gap:4px;flex-wrap:wrap}
+.pg-b{min-width:32px;padding:0 8px}
+select.input.pg-size{height:32px;width:auto;padding:0 8px;font-size:.82rem;margin-right:6px}
+.pg-dots{padding:0 4px}
 
 @media (max-width:760px){
   table.t.cards thead{display:none}
@@ -587,7 +592,7 @@ function art(p, big) {
 const photo = (p, big) => p?.foto ? `<img src="${p.foto}" alt="${esc(p.nombre)}" loading="lazy">` : art(p, big);
 
 /* ---------------- Almacenamiento ---------------- */
-const COLS = ["productos", "clientes", "proveedores", "compras", "ventas", "cotizaciones", "ordenes", "gastos", "presupuestos", "ajustes", "usuarios"];
+const COLS = ["productos", "clientes", "proveedores", "compras", "ventas", "cotizaciones", "ordenes", "gastos", "presupuestos", "ajustes", "usuarios", "roles"];
 const defaultConfig = () => ({
   empresa: "KPL AGRO", rnc: "1-31-00000-0", direccion: "Autopista Duarte Km 4, Santiago, República Dominicana",
   telefono: "809-000-0000", email: "ventas@kplagro.com", itbis: 18, tasa: 62.5, logo: "",
@@ -601,6 +606,7 @@ const store = {
     if (d && d.data) { this.data = d.data; this.config = { ...defaultConfig(), ...(d.config || {}) }; if (this.config.empresa === "Ajíes del Cibao") this.config.empresa = "KPL AGRO"; }
     else seed();
     COLS.forEach(c => this.data[c] ||= []);
+    if (!this.data.roles.length) { this.data.roles = DEFAULT_ROLES(); this.save(); }
   },
   save() { if (!lsSet("db", { data: this.data, config: this.config })) toast("El navegador no permitió guardar. Revisa el espacio disponible o quita fotos grandes.", "err"); },
   all(c) { return this.data[c] || []; },
@@ -713,6 +719,7 @@ function seed() {
   U("María Rodríguez", "ventas@kplagro.com", "Vendedor");
   U("José Almonte", "almacen@kplagro.com", "Almacén");
 
+  D.roles = DEFAULT_ROLES();
   const cfg = defaultConfig();
   const prods = D.productos.filter(p => p.categoria !== "Empaque");
   const now = new Date(); const base = new Date(now.getFullYear(), now.getMonth() - 11, 1);
@@ -790,14 +797,21 @@ function seed() {
 
 /* ---------------- Usuarios, roles y permisos ---------------- */
 const S = { user: null, view: "dashboard", edit: null, prodView: lsGet("pview", "grid") };
-const ROLES = {
-  "Propietario": { desc: "Ve y administra todo: reportes, ganancias, presupuesto, usuarios y configuración. Puede anular documentos.", views: "*" },
-  "Vendedor": { desc: "Factura, cotiza, gestiona clientes y órdenes de trabajo. Consulta productos y existencias.", views: ["dashboard", "ventas", "venta-nueva", "cotizaciones", "cotizacion-nueva", "ordenes", "clientes", "productos"] },
-  "Almacén": { desc: "Registra compras, mantiene productos, proveedores y kardex. Mueve órdenes de trabajo.", views: ["dashboard", "compras", "compra-nueva", "productos", "proveedores", "ordenes", "kardex"] }
-};
+const PERMS = [
+  { g: "Módulos que puede abrir", items: [["dashboard", "Panel"], ["ventas", "Ventas y facturas"], ["cotizaciones", "Cotizaciones"], ["ordenes", "Órdenes de trabajo"], ["clientes", "Clientes"], ["productos", "Productos"], ["compras", "Compras"], ["proveedores", "Proveedores"], ["kardex", "Kardex"], ["presupuesto", "Presupuesto"], ["reportes", "Reportes"], ["usuarios", "Usuarios y roles"], ["config", "Configuración"]] },
+  { g: "Acciones que puede hacer", items: [["venta-nueva", "Emitir facturas"], ["cotizacion-nueva", "Crear y editar cotizaciones"], ["compra-nueva", "Registrar compras"], ["productos.editar", "Crear y editar productos"], ["inventario.ajustar", "Ajustar existencias"], ["pagos", "Registrar cobros y pagos"], ["finanzas.ver", "Ver costos, ganancias y valor del inventario"], ["anular", "Anular facturas y compras"], ["eliminar", "Eliminar registros"]] }
+];
+const ALL_PERMS = PERMS.flatMap(g => g.items.map(i => i[0]));
+const PERM_NEEDS = { "venta-nueva": "ventas", "cotizacion-nueva": "cotizaciones", "compra-nueva": "compras", "productos.editar": "productos", "inventario.ajustar": "productos", "pagos": "ventas" };
+const DEFAULT_ROLES = () => [
+  { id: "rol-propietario", nombre: "Propietario", desc: "Ve y administra todo. Siempre tiene todos los permisos.", permisos: ALL_PERMS.slice(), sistema: true },
+  { id: "rol-vendedor", nombre: "Vendedor", desc: "Factura, cotiza, cobra y atiende clientes. Consulta productos y órdenes.", permisos: ["dashboard", "ventas", "venta-nueva", "cotizaciones", "cotizacion-nueva", "ordenes", "clientes", "productos", "pagos"] },
+  { id: "rol-almacen", nombre: "Almacén", desc: "Registra compras y mantiene productos, existencias, proveedores y kardex.", permisos: ["dashboard", "compras", "compra-nueva", "productos", "productos.editar", "inventario.ajustar", "proveedores", "ordenes", "kardex"] }
+];
+const roleOf = name => store.all("roles").find(r => r.nombre === name) || DEFAULT_ROLES().find(r => r.nombre === name);
 const isOwner = () => S.user?.rol === "Propietario";
-const can = v => { const r = ROLES[S.user?.rol]; return !!r && (r.views === "*" || r.views.includes(v)); };
-const canEditProducts = () => isOwner() || S.user?.rol === "Almacén";
+const can = p => { if (!S.user) return false; const r = roleOf(S.user.rol); if (!r) return false; if (r.sistema || p === "dashboard") return true; return r.permisos.includes(p); };
+const canEditProducts = () => can("productos.editar");
 
 async function login(email, pass) {
   email = email.trim().toLowerCase();
@@ -822,6 +836,7 @@ async function afterCloudAuth(email) {
   if (!u) { await cloud.sb.auth.signOut(); throw new Error("Tu cuenta no tiene un perfil en el sistema. Pide al propietario que te agregue en Usuarios."); }
   if (!u.activo) { await cloud.sb.auth.signOut(); throw new Error("Este usuario está desactivado. Habla con el propietario."); }
   S.user = u; cloud.listen();
+  if (!store.all("roles").length) { if (u.rol === "Propietario") DEFAULT_ROLES().forEach(r => store.put("roles", r)); else store.data.roles = DEFAULT_ROLES(); }
 }
 async function logout() {
   if (cloud.on) { try { await cloud.sb.auth.signOut(); } catch {} }
@@ -907,6 +922,28 @@ function downloadText(name, text, type = "text/csv") {
 }
 const csv = rows => "\ufeff" + rows.map(r => r.map(v => { v = String(v ?? ""); return /[",;\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v; }).join(",")).join("\n");
 
+/* Paginación reutilizable */
+function pager(name, sizes = [10, 25, 50]) {
+  const st = { page: 1, size: lsGet("pg-" + name, sizes[0]) }; if (!sizes.includes(st.size)) st.size = sizes[0];
+  return {
+    st, reset() { st.page = 1; },
+    slice(list) { const pages = Math.max(1, Math.ceil(list.length / st.size)); st.page = Math.min(Math.max(1, st.page), pages); return list.slice((st.page - 1) * st.size, st.page * st.size); },
+    html(total) {
+      if (!total) return "";
+      const pages = Math.max(1, Math.ceil(total / st.size)), p = st.page, a = (p - 1) * st.size + 1, b = Math.min(total, p * st.size);
+      const nums = []; for (let i = 1; i <= pages; i++) if (i === 1 || i === pages || Math.abs(i - p) <= 1) nums.push(i); else if (nums[nums.length - 1] !== "…") nums.push("…");
+      const btn = (to, label, dis, on, aria) => `<button class="btn sm ${on ? "pri" : "ghost"} pg-b" data-pg="${name}" data-to="${to}" ${dis ? "disabled" : ""} ${on ? 'aria-current="page"' : ""} aria-label="${aria || "Página " + label}">${label}</button>`;
+      return `<nav class="pager" aria-label="Paginación"><span>Mostrando <b>${a}–${b}</b> de <b>${total}</b></span>
+        <span class="pg-ctl"><select class="input pg-size" data-pgsize="${name}" aria-label="Filas por página">${sizes.map(z => `<option value="${z}" ${z === st.size ? "selected" : ""}>${z} por página</option>`).join("")}</select>
+        ${btn(p - 1, "‹", p <= 1, false, "Página anterior")}${nums.map(n => n === "…" ? `<span class="pg-dots">…</span>` : btn(n, n, false, n === p)).join("")}${btn(p + 1, "›", p >= pages, false, "Página siguiente")}</span></nav>`;
+    },
+    bind(root, redraw) {
+      root.addEventListener("click", e => { const b = e.target.closest(`[data-pg="${name}"]`); if (!b || b.disabled) return; e.stopPropagation(); st.page = +b.dataset.to; redraw(); const r = root.getBoundingClientRect(); if (r.top < 70) window.scrollBy({ top: r.top - 80, behavior: "smooth" }); });
+      root.addEventListener("change", e => { const s = e.target.closest(`[data-pgsize="${name}"]`); if (!s) return; st.size = +s.value; st.page = 1; lsSet("pg-" + name, st.size); redraw(); });
+    }
+  };
+}
+
 /* Visor de imágenes táctil: pellizcar, doble toque, rueda y arrastre */
 function lightbox(p) {
   const lb = document.createElement("div"); lb.className = "lightbox";
@@ -953,8 +990,9 @@ function go(v, ctx) { S.pendingCtx = ctx || null; if (location.hash !== "#" + v)
 function brandMark() { const c = store.config; return c.logo ? `<img src="${c.logo}" alt="">` : `<span style="width:100%;height:100%;background:#fff;display:grid;place-items:center">${kplLogo(false).replace("<svg ", '<svg style="width:84%;height:84%" ')}</span>`; }
 function shellHTML() {
   const navHTML = NAV.map(g => { const items = g.items.filter(([v]) => can(v)); if (!items.length) return ""; return (g.g ? `<div class="grp">${g.g}</div>` : "") + items.map(([v, t, i]) => `<a href="#${v}" data-nav="${v}">${ic(i)}<span>${t}</span>${v === "productos" ? `<span class="count" data-low></span>` : v === "ordenes" ? `<span class="count" data-late></span>` : ""}</a>`).join(""); }).join("");
-  const fab = can("venta-nueva") ? ["venta-nueva", "Facturar"] : ["compra-nueva", "Comprar"];
-  const b2 = can("ventas") ? ["ventas", "Ventas", "i-receipt"] : ["compras", "Compras", "i-cart"];
+  const fab = can("venta-nueva") ? ["venta-nueva", "Facturar"] : can("compra-nueva") ? ["compra-nueva", "Comprar"] : can("cotizacion-nueva") ? ["cotizacion-nueva", "Cotizar"] : null;
+  const b2 = [["ventas", "Ventas", "i-receipt"], ["compras", "Compras", "i-cart"], ["ordenes", "Órdenes", "i-board"], ["clientes", "Clientes", "i-users"]].find(x => can(x[0])) || ["dashboard", "Panel", "i-home"];
+  const b3 = [["productos", "Productos", "i-box"], ["ordenes", "Órdenes", "i-board"], ["reportes", "Reportes", "i-chart"]].find(x => can(x[0]) && x[0] !== b2[0]);
   return `<div class="app">
   <aside class="side" aria-label="Menú principal">
     <div class="brand"><div class="mark">${brandMark()}</div><div><b data-empresa>${esc(store.config.empresa)}</b><small>Ventas y exportación</small></div></div>
@@ -975,8 +1013,8 @@ function shellHTML() {
   <nav class="bottom" aria-label="Accesos rápidos">
     <a href="#dashboard" data-nav="dashboard">${ic("i-home")}Panel</a>
     <a href="#${b2[0]}" data-nav="${b2[0]}">${ic(b2[2])}${b2[1]}</a>
-    <a href="#${fab[0]}" class="fab" aria-label="${fab[1]}"><span>${ic("i-plus")}</span>${fab[1]}</a>
-    <a href="#productos" data-nav="productos">${ic("i-box")}Productos</a>
+    ${fab ? `<a href="#${fab[0]}" class="fab" aria-label="${fab[1]}"><span>${ic("i-plus")}</span>${fab[1]}</a>` : "<span></span>"}
+    ${b3 ? `<a href="#${b3[0]}" data-nav="${b3[0]}">${ic(b3[2])}${b3[1]}</a>` : "<span></span>"}
     <button data-act="menu">${ic("i-menu")}Más</button>
   </nav></div>`;
 }
@@ -1005,7 +1043,7 @@ function render() {
 }
 
 /* ---------------- Login ---------------- */
-const APP_VERSION = "2026.11.13-1";
+const APP_VERSION = "2026.11.13-2";
 const VENDOR = { nombre: "SP BJ SOFTWARE", instagram: "@bjsoftware", telefono: "849-473-3173" };
 /* Logo de BJ Software: hexágono con cubo */
 const bjHex = (size = 40) => `<svg viewBox="0 0 64 64" width="${size}" height="${size}" role="img" aria-label="BJ Software"><polygon points="32,5 55.4,18.5 55.4,45.5 32,59 8.6,45.5 8.6,18.5" fill="none" stroke="#F28C1B" stroke-width="5" stroke-linejoin="round"/><polygon points="32,19 43.5,25.5 32,32 20.5,25.5" fill="#FFB65C"/><polygon points="20.5,25.5 32,32 32,45 20.5,38.5" fill="#F59B2E"/><polygon points="43.5,25.5 32,32 32,45 43.5,38.5" fill="#DB720C"/></svg>`;
@@ -1159,7 +1197,7 @@ VIEWS.dashboard = el => {
   const quick = [["venta-nueva", "Nueva factura", "hot", "i-receipt"], ["cotizacion-nueva", "Cotizar", "", "i-quote"], ["compra-nueva", "Registrar compra", "", "i-cart"]].filter(q => can(q[0]))
     .map(q => `<a class="btn ${q[2]}" href="#${q[0]}">${ic(q[3])}<span>${q[1]}</span></a>`).join("");
   let kpis = "";
-  if (isOwner()) {
+  if (can("finanzas.ver")) {
     const gan = vm.reduce((a, v) => a + subDOP(v) - costoVenta(v), 0); const margen = vMes ? gan / vMes * 100 : 0;
     const inv = store.all("productos").reduce((a, p) => a + Math.max(0, p.stock) * p.costo, 0);
     const pend = V.filter(v => v.estado === "Pendiente"); const cxc = pend.reduce((a, v) => a + (v.moneda === "USD" ? saldo(v) * v.tasa : saldo(v)), 0); const venc = pend.filter(v => v.vence && v.vence < t).length;
@@ -1167,7 +1205,7 @@ VIEWS.dashboard = el => {
       <div class="kpi"><span class="lbl">${ic("i-chart")}Ganancia bruta del mes</span><span class="val">${money(gan)}</span><span class="delta muted">Margen ${margen.toFixed(1)}%</span></div>
       <div class="kpi"><span class="lbl">${ic("i-box")}Valor del inventario</span><span class="val">${money(inv)}</span><span class="delta muted">${qty(store.all("productos").reduce((a, p) => a + Math.max(0, p.stock), 0))} unidades al costo</span></div>
       <div class="kpi"><span class="lbl">${ic("i-cash")}Cuentas por cobrar</span><span class="val">${money(cxc)}</span><span class="delta ${venc ? "down" : "muted"}">${pend.length} facturas · ${venc} vencidas</span></div>`;
-  } else if (S.user.rol === "Vendedor") {
+  } else if (can("ventas")) {
     const mine = V.filter(v => v.fecha === t && v.usuario === S.user.nombre);
     kpis = `<div class="kpi feature"><span class="lbl">${ic("i-flame")}Mis ventas de hoy</span><span class="val">${money(sum(mine))}</span><span class="delta">${mine.length} facturas</span></div>
       <div class="kpi"><span class="lbl">${ic("i-receipt")}Facturas del mes</span><span class="val">${vm.length}</span><span class="delta muted">Todo el equipo</span></div>
@@ -1181,7 +1219,7 @@ VIEWS.dashboard = el => {
       <div class="kpi"><span class="lbl">${ic("i-box")}Productos activos</span><span class="val">${store.all("productos").filter(p => p.activo !== false).length}</span><span class="delta muted">En catálogo</span></div>`;
   }
   const months = monthsBack(12);
-  const chart = isOwner() ? `<section class="panel"><header><h2>Ventas y compras, últimos 12 meses</h2><div class="legend"><span><i style="background:var(--chili)"></i>Ventas</span><span><i style="background:var(--brand)"></i>Compras</span></div></header>
+  const chart = can("finanzas.ver") ? `<section class="panel"><header><h2>Ventas y compras, últimos 12 meses</h2><div class="legend"><span><i style="background:var(--chili)"></i>Ventas</span><span><i style="background:var(--brand)"></i>Compras</span></div></header>
     ${lineChart(months.map(m => MESES[+m.slice(5) - 1]), [{ name: "Ventas", color: isDark() ? "#FF5A4E" : "#D4271F", values: months.map(m => r2(V.filter(v => ym(v.fecha) === m).reduce((a, v) => a + subDOP(v), 0))) }, { name: "Compras", color: isDark() ? "#3FB37A" : "#1E6B45", values: months.map(m => r2(C.filter(v => ym(v.fecha) === m).reduce((a, v) => a + v.subtotal, 0))) }])}</section>` : "";
   // actividad
   const acts = [];
@@ -1194,7 +1232,7 @@ VIEWS.dashboard = el => {
   const desde = addDays(t, -90); const tp = {};
   V.filter(v => v.fecha >= desde).forEach(v => v.lineas.forEach(l => { const k = l.productoId; tp[k] = (tp[k] || 0) + l.cant * l.precio * (v.moneda === "USD" ? v.tasa : 1); }));
   const top = Object.entries(tp).map(([id, value]) => { const p = producto(id); return { label: p?.nombre || "—", value: r2(value), color: p?.color }; }).sort((a, b) => b.value - a.value).slice(0, 5);
-  const topHTML = isOwner() || S.user.rol === "Vendedor" ? `<section class="panel"><header><h2>Más vendidos, 90 días</h2></header>${bars(top)}</section>` : "";
+  const topHTML = can("finanzas.ver") || can("ventas") ? `<section class="panel"><header><h2>Más vendidos, 90 días</h2></header>${bars(top)}</section>` : "";
   const low = lowStock().slice(0, 6);
   const lowHTML = `<section class="panel flush"><header><h2>Stock bajo</h2>${can("compra-nueva") && low.length ? `<a class="btn sm" href="#compra-nueva">${ic("i-plus")}Comprar</a>` : ""}</header><div class="feed">${low.map(p => `<a data-lowp="${p.id}"><span class="thumb">${photo(p)}</span><span><b>${esc(p.nombre)}</b><small>Mínimo ${qty(p.minimo)} · ${esc(p.unidad)}</small></span>${heat(p)}</a>`).join("") || `<div class="empty">${ic("i-check")}<b>Todo en orden</b>Ningún producto por debajo del mínimo.</div>`}</div></section>`;
   const ots = store.all("ordenes").filter(o => o.estado !== "Despachada").sort((a, b) => a.entrega.localeCompare(b.entrega)).slice(0, 4);
@@ -1209,9 +1247,9 @@ VIEWS.dashboard = el => {
 /* ---------------- Productos ---------------- */
 VIEWS.productos = el => {
   const P = store.all("productos"); const cats = [...new Set(P.map(p => p.categoria))].sort();
-  const f = { q: "", cat: "", stock: "todos" };
+  const f = { q: "", cat: "", stock: "todos" }; const pg = pager("productos", [12, 24, 48]);
   const editable = canEditProducts();
-  el.innerHTML = `<div class="vhead"><div><h1>Productos</h1><p>${P.length} productos en catálogo${isOwner() ? " · inventario valorado en " + money(P.reduce((a, p) => a + Math.max(0, p.stock) * p.costo, 0)) : ""}</p></div>
+  el.innerHTML = `<div class="vhead"><div><h1>Productos</h1><p>${P.length} productos en catálogo${can("finanzas.ver") ? " · inventario valorado en " + money(P.reduce((a, p) => a + Math.max(0, p.stock) * p.costo, 0)) : ""}</p></div>
     <div class="acts"><div class="seg" role="group" aria-label="Vista"><button data-pv="grid" class="${S.prodView === "grid" ? "on" : ""}" aria-label="Cuadrícula">${ic("i-grid", "")}</button><button data-pv="list" class="${S.prodView === "list" ? "on" : ""}" aria-label="Lista">${ic("i-rows")}</button></div>
     ${editable ? `<button class="btn pri" data-new>${ic("i-plus")}<span class="lbl">Nuevo producto</span></button>` : ""}</div></div>
     <div class="toolbar"><label class="searchbox">${ic("i-search")}<input class="input" placeholder="Buscar por nombre o SKU" data-q aria-label="Buscar"></label>
@@ -1221,27 +1259,29 @@ VIEWS.productos = el => {
   $$(".seg [data-pv] svg", el).forEach(s => { s.style.width = "18px"; s.style.height = "18px"; });
   const draw = () => {
     const q = norm(f.q);
-    const list = P.filter(p => (!q || norm(p.nombre + " " + p.sku).includes(q)) && (!f.cat || p.categoria === f.cat) && (f.stock === "todos" || (f.stock === "bajo" ? p.stock > 0 && p.stock <= p.minimo : p.stock <= 0)))
+    let list = P.filter(p => (!q || norm(p.nombre + " " + p.sku).includes(q)) && (!f.cat || p.categoria === f.cat) && (f.stock === "todos" || (f.stock === "bajo" ? p.stock > 0 && p.stock <= p.minimo : p.stock <= 0)))
       .sort((a, b) => (b.activo !== false) - (a.activo !== false) || a.nombre.localeCompare(b.nombre));
     const out = $("[data-out]", el);
     if (!list.length) { out.innerHTML = `<div class="panel empty">${ic("i-box")}<b>No hay productos con esos filtros</b>${editable ? "Cambia la búsqueda o crea un producto nuevo." : "Cambia la búsqueda."}</div>`; return; }
-    const showCost = isOwner() || S.user.rol === "Almacén";
+    const showCost = can("finanzas.ver") || canEditProducts(); const canAdj = can("inventario.ajustar");
+    const all = list; list = pg.slice(all);
     if (S.prodView === "grid") {
       out.innerHTML = `<div class="pgrid">${list.map(p => `<article class="pcard" style="${p.activo === false ? "opacity:.55" : ""}">
         <button class="ph" data-zoom="${p.id}" aria-label="Ampliar foto de ${esc(p.nombre)}">${photo(p)}<span class="sku">${esc(p.sku)}</span></button>
         <div class="bd"><div><b>${esc(p.nombre)}</b><div class="small muted">${esc(p.categoria)} · ${esc(p.unidad)}</div></div>
         <div class="meta"><span class="price num">${money(p.precio)}</span>${heat(p)}</div>${showCost ? `<div class="tiny muted">Costo ${money(p.costo)} · margen ${p.precio ? ((p.precio - p.costo) / p.precio * 100).toFixed(0) : 0}%</div>` : ""}</div>
-        ${editable ? `<div class="ft"><button class="btn sm" data-edit="${p.id}">${ic("i-edit")}Editar</button><button class="btn sm" data-adj="${p.id}" title="Ajustar existencia">${ic("i-adjust")}Ajustar</button></div>` : ""}</article>`).join("")}</div>`;
+        ${editable || canAdj ? `<div class="ft">${editable ? `<button class="btn sm" data-edit="${p.id}">${ic("i-edit")}Editar</button>` : ""}${canAdj ? `<button class="btn sm" data-adj="${p.id}" title="Ajustar existencia">${ic("i-adjust")}Ajustar</button>` : ""}</div>` : ""}</article>`).join("")}</div>${pg.html(all.length)}`;
     } else {
-      out.innerHTML = `<div class="tbl-wrap"><table class="t cards"><thead><tr><th>Producto</th><th>Categoría</th><th>Unidad</th>${showCost ? `<th class="r">Costo</th>` : ""}<th class="r">Precio</th><th>Existencia</th>${editable ? "<th></th>" : ""}</tr></thead><tbody>
+      out.innerHTML = `<div class="tbl-wrap"><table class="t cards"><thead><tr><th>Producto</th><th>Categoría</th><th>Unidad</th>${showCost ? `<th class="r">Costo</th>` : ""}<th class="r">Precio</th><th>Existencia</th>${editable || canAdj ? "<th></th>" : ""}</tr></thead><tbody>
       ${list.map(p => `<tr><td class="full"><div class="cell-main"><button class="thumb" data-zoom="${p.id}" aria-label="Ampliar foto">${photo(p)}</button><span><b>${esc(p.nombre)}</b><small>${esc(p.sku)}${p.activo === false ? " · inactivo" : ""}</small></span></div></td>
       <td data-l="Categoría">${esc(p.categoria)}</td><td data-l="Unidad">${esc(p.unidad)}</td>${showCost ? `<td class="n" data-l="Costo">${money(p.costo)}</td>` : ""}<td class="n" data-l="Precio"><b>${money(p.precio)}</b></td><td data-l="Existencia">${heat(p)}</td>
-      ${editable ? `<td class="row-acts-cell"><div class="row-acts"><button class="btn sm icon" data-adj="${p.id}" title="Ajustar existencia" aria-label="Ajustar existencia">${ic("i-adjust")}</button><button class="btn sm icon" data-edit="${p.id}" title="Editar" aria-label="Editar">${ic("i-edit")}</button></div></td>` : ""}</tr>`).join("")}</tbody></table></div>`;
+      ${editable || canAdj ? `<td class="row-acts-cell"><div class="row-acts">${canAdj ? `<button class="btn sm icon" data-adj="${p.id}" title="Ajustar existencia" aria-label="Ajustar existencia">${ic("i-adjust")}</button>` : ""}${editable ? `<button class="btn sm icon" data-edit="${p.id}" title="Editar" aria-label="Editar">${ic("i-edit")}</button>` : ""}</div></td>` : ""}</tr>`).join("")}</tbody></table></div>${pg.html(all.length)}`;
     }
   };
-  $("[data-q]", el).addEventListener("input", debounce(e => { f.q = e.target.value; draw(); }, 120));
-  $("[data-cat]", el).onchange = e => { f.cat = e.target.value; draw(); };
-  $("[data-stock]", el).onclick = e => { const b = e.target.closest("button"); if (!b) return; f.stock = b.dataset.s; $$("[data-stock] button", el).forEach(x => x.classList.toggle("on", x === b)); draw(); };
+  pg.bind($("[data-out]", el), () => draw());
+  $("[data-q]", el).addEventListener("input", debounce(e => { f.q = e.target.value; pg.reset(); draw(); }, 120));
+  $("[data-cat]", el).onchange = e => { f.cat = e.target.value; pg.reset(); draw(); };
+  $("[data-stock]", el).onclick = e => { const b = e.target.closest("button"); if (!b) return; f.stock = b.dataset.s; pg.reset(); $$("[data-stock] button", el).forEach(x => x.classList.toggle("on", x === b)); draw(); };
   $$("[data-pv]", el).forEach(b => b.onclick = () => { S.prodView = b.dataset.pv; lsSet("pview", S.prodView); $$("[data-pv]", el).forEach(x => x.classList.toggle("on", x === b)); draw(); });
   $("[data-new]", el)?.addEventListener("click", () => productForm());
   el.addEventListener("click", e => {
@@ -1274,7 +1314,7 @@ function productForm(p) {
     <div class="field"><span>Color de la ilustración</span><div class="swatches">${COLORS.map((c, i) => `<input type="radio" name="color" id="sw${i}" value="${c}" ${p.color === c ? "checked" : ""}><label for="sw${i}" style="background:${c}" title="${c}"></label>`).join("")}</div></div>
     <label class="field"><span>Descripción</span><textarea class="input" name="desc" rows="2">${esc(p.desc)}</textarea></label>
     <label class="switch"><input type="checkbox" name="activo" ${p.activo !== false ? "checked" : ""}> Activo para la venta</label></form>`,
-    foot: (ro ? "" : (!nuevo && isOwner() ? `<button class="btn danger" data-del style="margin-right:auto">${ic("i-trash")}Eliminar</button>` : "") + `<button class="btn" data-close>Cancelar</button><button class="btn pri" data-save>${nuevo ? "Crear producto" : "Guardar cambios"}</button>`) || `<button class="btn" data-close>Cerrar</button>`
+    foot: (ro ? "" : (!nuevo && can("eliminar") ? `<button class="btn danger" data-del style="margin-right:auto">${ic("i-trash")}Eliminar</button>` : "") + `<button class="btn" data-close>Cancelar</button><button class="btn pri" data-save>${nuevo ? "Crear producto" : "Guardar cambios"}</button>`) || `<button class="btn" data-close>Cerrar</button>`
   });
   const F = m.$("[data-f]");
   const margin = () => { const c = +F.costo.value, pr = +F.precio.value; m.$("[data-margin]").textContent = pr ? `Margen: ${((pr - c) / pr * 100).toFixed(1)}% · ganancia por unidad ${money(pr - c)} · en dólares ≈ ${money(pr / store.config.tasa, "USD")}` : ""; };
@@ -1326,22 +1366,24 @@ const PARTY = {
 const waLink = (tel, text = "") => { let n = String(tel || "").replace(/\D/g, ""); if (!n) return ""; if (n.length === 10) n = "1" + n; return `https://wa.me/${n}${text ? "?text=" + encodeURIComponent(text) : ""}`; };
 function partyView(col) {
   return el => {
-    const cfg = PARTY[col]; let q = "", tipo = "";
+    const cfg = PARTY[col]; let q = "", tipo = ""; const pg = pager(col);
     const docs = col === "clientes" ? ventasOK() : comprasOK(); const key = col === "clientes" ? "clienteId" : "proveedorId";
     const tot = {}; docs.forEach(d => tot[d[key]] = (tot[d[key]] || 0) + toDOP(d));
     el.innerHTML = `<div class="vhead"><div><h1>${cfg.title}</h1><p>${store.all(col).length} registrados</p></div><div class="acts"><button class="btn pri" data-new>${ic("i-plus")}<span class="lbl">Nuevo ${cfg.one}</span></button></div></div>
     <div class="toolbar"><label class="searchbox">${ic("i-search")}<input class="input" placeholder="Buscar por nombre, RNC o ciudad" data-q aria-label="Buscar"></label>
     ${col === "clientes" ? `<div class="seg" data-tipo><button class="on" data-t="">Todos</button><button data-t="Local">Locales</button><button data-t="Exportación">Exportación</button></div>` : ""}</div><div data-out></div>`;
     const draw = () => {
-      const n = norm(q); const list = store.all(col).filter(c => (!n || norm(c.nombre + " " + c.rnc + " " + c.ciudad + " " + (c.pais || "")).includes(n)) && (!tipo || c.tipo === tipo)).sort((a, b) => a.nombre.localeCompare(b.nombre));
+      const n = norm(q); let list = store.all(col).filter(c => (!n || norm(c.nombre + " " + c.rnc + " " + c.ciudad + " " + (c.pais || "")).includes(n)) && (!tipo || c.tipo === tipo)).sort((a, b) => a.nombre.localeCompare(b.nombre));
+      const all = list; list = pg.slice(all);
       $("[data-out]", el).innerHTML = list.length ? `<div class="tbl-wrap"><table class="t cards"><thead><tr><th>Nombre</th>${col === "clientes" ? "<th>Tipo</th><th>Ubicación</th>" : "<th>Suministra</th><th>Ubicación</th>"}<th>Teléfono</th><th>RNC / Tax ID</th><th class="r">${col === "clientes" ? "Comprado" : "Compras"}</th></tr></thead><tbody>
       ${list.map(c => `<tr class="click" data-id="${c.id}"><td class="full"><div class="cell-main"><span class="avatar" style="background:${col === "clientes" ? (c.tipo === "Exportación" ? "var(--sky)" : "var(--brand)") : "var(--sun)"}">${initials(c.nombre)}</span><span><b>${esc(c.nombre)}</b><small>${esc(c.email || c.contacto || "")}</small></span></div></td>
       ${col === "clientes" ? `<td data-l="Tipo"><span class="chip ${c.tipo === "Exportación" ? "info" : "ok"}">${esc(c.tipo)}</span></td><td data-l="Ubicación">${esc([c.ciudad, c.pais].filter(Boolean).join(", "))}</td>` : `<td data-l="Suministra" class="hide-m">${esc(c.suministra || "")}</td><td data-l="Ubicación">${esc(c.ciudad)}</td>`}
-      <td data-l="Teléfono">${c.telefono ? `<a href="${waLink(c.telefono)}" target="_blank" rel="noopener" data-stop style="color:var(--brand);font-weight:600;text-decoration:none">${esc(c.telefono)}</a>` : "—"}</td><td data-l="RNC" class="hide-m">${esc(c.rnc || "—")}</td><td class="n" data-l="Total">${isOwner() || col === "clientes" ? money(tot[c.id] || 0) : "—"}</td></tr>`).join("")}</tbody></table></div>`
+      <td data-l="Teléfono">${c.telefono ? `<a href="${waLink(c.telefono)}" target="_blank" rel="noopener" data-stop style="color:var(--brand);font-weight:600;text-decoration:none">${esc(c.telefono)}</a>` : "—"}</td><td data-l="RNC" class="hide-m">${esc(c.rnc || "—")}</td><td class="n" data-l="Total">${can("finanzas.ver") || col === "clientes" ? money(tot[c.id] || 0) : "—"}</td></tr>`).join("")}</tbody></table></div>${pg.html(all.length)}`
         : `<div class="panel empty">${ic("i-users")}<b>Sin resultados</b>Cambia la búsqueda o registra un ${cfg.one} nuevo.</div>`;
     };
-    $("[data-q]", el).addEventListener("input", debounce(e => { q = e.target.value; draw(); }, 120));
-    $("[data-tipo]", el)?.addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; tipo = b.dataset.t; $$("[data-tipo] button", el).forEach(x => x.classList.toggle("on", x === b)); draw(); });
+    pg.bind($("[data-out]", el), () => draw());
+    $("[data-q]", el).addEventListener("input", debounce(e => { q = e.target.value; pg.reset(); draw(); }, 120));
+    $("[data-tipo]", el)?.addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; tipo = b.dataset.t; pg.reset(); $$("[data-tipo] button", el).forEach(x => x.classList.toggle("on", x === b)); draw(); });
     $("[data-new]", el).onclick = () => partyForm(col);
     el.addEventListener("click", e => { if (e.target.closest("[data-stop]")) return; const tr = e.target.closest("tr[data-id]"); if (tr) partyForm(col, store.get(col, tr.dataset.id)); });
     draw();
@@ -1351,7 +1393,7 @@ VIEWS.clientes = partyView("clientes"); VIEWS.proveedores = partyView("proveedor
 function partyForm(col, o, onSaved) {
   const cfg = PARTY[col]; const nuevo = !o; o = o ? { ...o } : (col === "clientes" ? { tipo: "Local", pais: "República Dominicana" } : {});
   const m = modal({ title: nuevo ? "Nuevo " + cfg.one : o.nombre, body: `<form class="grid g2" data-f>${cfg.fields.map(([k, l, span, opts]) => `<label class="field ${span === 2 ? "span2" : ""}"><span>${l}</span>${opts ? `<select class="input" name="${k}">${opts.map(x => `<option ${o[k] === x ? "selected" : ""}>${x}</option>`).join("")}</select>` : `<input class="input" name="${k}" value="${esc(o[k] || "")}" ${k === "email" ? 'type="email"' : k === "telefono" ? 'type="tel"' : ""}>`}</label>`).join("")}</form>`,
-    foot: `${!nuevo && isOwner() ? `<button class="btn danger" data-del style="margin-right:auto">${ic("i-trash")}Eliminar</button>` : ""}${!nuevo && o.telefono ? `<a class="btn" target="_blank" rel="noopener" href="${waLink(o.telefono)}">${ic("i-wa")}WhatsApp</a>` : ""}<button class="btn" data-close>Cancelar</button><button class="btn pri" data-save>${nuevo ? "Crear " + cfg.one : "Guardar cambios"}</button>` });
+    foot: `${!nuevo && can("eliminar") ? `<button class="btn danger" data-del style="margin-right:auto">${ic("i-trash")}Eliminar</button>` : ""}${!nuevo && o.telefono ? `<a class="btn" target="_blank" rel="noopener" href="${waLink(o.telefono)}">${ic("i-wa")}WhatsApp</a>` : ""}<button class="btn" data-close>Cancelar</button><button class="btn pri" data-save>${nuevo ? "Crear " + cfg.one : "Guardar cambios"}</button>` });
   const F = m.$("[data-f]");
   m.$("[data-save]").onclick = () => { if (!requireFields(F, ["nombre"])) return; const saved = store.put(col, { ...o, ...formData(F) }); m.close(); if (onSaved) onSaved(saved); else route(); toast(nuevo ? (cfg.one[0].toUpperCase() + cfg.one.slice(1)) + " creado" : "Cambios guardados"); };
   m.$("[data-del]")?.addEventListener("click", async () => {
@@ -1412,7 +1454,7 @@ function docEditor(kind) {
       d.subtotal = r2(d.lineas.reduce((a, l) => a + (+l.cant || 0) * (+l.precio || 0), 0)); d.itbis = r2(d.subtotal * (+d.itbisPct || 0) / 100); d.total = r2(d.subtotal + d.itbis);
       $("[data-totals]", el).innerHTML = `<div><span class="muted">Subtotal</span><span>${money(d.subtotal, cur())}</span></div><div><span class="muted">${+d.itbisPct ? "ITBIS " + d.itbisPct + "%" : "Exento de ITBIS"}</span><span>${money(d.itbis, cur())}</span></div>
         <div class="grand"><span>Total</span><span>${money(d.total, cur())}</span></div>${cur() === "USD" ? `<div class="small muted"><span>Equivale a</span><span>${money(d.total * (+d.tasa || 0))}</span></div>` : ""}
-        ${kind === "venta" && isOwner() ? `<div class="small muted"><span>Ganancia estimada</span><span>${money(subDOP(d) - d.lineas.reduce((a, l) => a + (+l.cant || 0) * (producto(l.productoId)?.costo || 0), 0))}</span></div>` : ""}`;
+        ${kind === "venta" && can("finanzas.ver") ? `<div class="small muted"><span>Ganancia estimada</span><span>${money(subDOP(d) - d.lineas.reduce((a, l) => a + (+l.cant || 0) * (producto(l.productoId)?.costo || 0), 0))}</span></div>` : ""}`;
       $("[data-count]", el).textContent = d.lineas.length ? d.lineas.length + (d.lineas.length === 1 ? " producto" : " productos") : "";
     };
     const stockNote = l => { if (kind !== "venta") return ""; const p = producto(l.productoId); if (!p) return ""; const need = d.lineas.filter(x => x.productoId === l.productoId).reduce((a, x) => a + (+x.cant || 0), 0); return need > p.stock ? `<span class="warn-stock">Solo hay ${qty(p.stock)} disponibles</span>` : `Disponible: ${qty(p.stock)}`; };
@@ -1517,7 +1559,7 @@ VIEWS["compra-nueva"] = docEditor("compra");
 /* ---------------- Listados de documentos ---------------- */
 function docList(o) {
   return el => {
-    const f = { desde: addDays(today(), -90), hasta: "", party: "", estado: "", q: "" }; let limit = 25;
+    const f = { desde: addDays(today(), -90), hasta: "", party: "", estado: "", q: "" }; const pg = pager(o.col);
     const partyCol = o.party, key = partyCol === "clientes" ? "clienteId" : "proveedorId";
     el.innerHTML = `<div class="vhead"><div><h1>${o.title}</h1><p data-sum></p></div><div class="acts">${o.extra || ""}${can(o.newView) ? `<a class="btn ${o.newHot ? "hot" : "pri"}" href="#${o.newView}">${ic("i-plus")}<span class="lbl">${o.newLabel}</span></a>` : ""}</div></div>
       <section class="panel" style="margin-bottom:14px;padding:14px"><div class="grid g4 keep2" style="align-items:end">
@@ -1532,18 +1574,18 @@ function docList(o) {
       const vivos = list.filter(d => d.estado !== "Anulada" && d.estado !== "Rechazada");
       $("[data-sum]", el).textContent = `${list.length} documentos · ${money(vivos.reduce((a, d) => a + toDOP(d), 0))} en el período`;
       $("[data-out]", el).innerHTML = list.length ? `<div class="tbl-wrap"><table class="t cards"><thead><tr><th>No.</th><th>${partyCol === "clientes" ? "Cliente" : "Proveedor"}</th><th>Fecha</th>${o.col !== "compras" ? "<th>Tipo</th>" : "<th>Comprobante</th>"}<th>Usuario</th><th class="r">Total</th><th>Estado</th><th></th></tr></thead><tbody>
-      ${list.slice(0, limit).map(d => `<tr class="click" data-id="${d.id}"><td data-l="No."><b>#${d.num}</b></td><td class="full" data-l="${partyCol === "clientes" ? "Cliente" : "Proveedor"}"><b>${esc((partyCol === "clientes" ? cliente : proveedor)(d[key]).nombre)}</b></td><td data-l="Fecha">${fdate(d.fecha)}</td>
+      ${pg.slice(list).map(d => `<tr class="click" data-id="${d.id}"><td data-l="No."><b>#${d.num}</b></td><td class="full" data-l="${partyCol === "clientes" ? "Cliente" : "Proveedor"}"><b>${esc((partyCol === "clientes" ? cliente : proveedor)(d[key]).nombre)}</b></td><td data-l="Fecha">${fdate(d.fecha)}</td>
         ${o.col !== "compras" ? `<td data-l="Tipo" class="hide-m">${d.tipo === "Exportación" ? `<span class="chip info plain">Exportación · US$</span>` : `<span class="chip plain">Local</span>`}</td>` : `<td data-l="Comprobante" class="hide-m">${esc(d.documento || "—")}</td>`}
         <td data-l="Usuario" class="hide-m">${esc(d.usuario || "")}</td><td class="n" data-l="Total"><b>${money(d.total, d.moneda || "DOP")}</b>${o.col === "ventas" && d.estado === "Pendiente" && d.pagado ? `<br><small class="muted">Saldo ${money(saldo(d), d.moneda)}</small>` : ""}</td>
         <td data-l="Estado">${estadoChip(o.col === "ventas" && d.estado === "Pendiente" && d.vence && d.vence < today() ? "Vencida" : d.estado)}</td>
         <td class="row-acts-cell"><div class="row-acts"><button class="btn sm icon" data-print="${d.id}" title="Imprimir" aria-label="Imprimir">${ic("i-print")}</button></div></td></tr>`).join("")}</tbody></table></div>
-        ${list.length > limit ? `<div class="pager"><span>Mostrando ${limit} de ${list.length}</span><button class="btn sm" data-more>Mostrar más</button></div>` : ""}`
+        ${pg.html(list.length)}`
         : `<div class="panel empty">${ic(o.icon)}<b>No hay documentos con estos filtros</b>Amplía el rango de fechas o quita el filtro de estado.</div>`;
     };
-    el.addEventListener("input", debounce(e => { const k = e.target.dataset.f; if (k) { f[k] = e.target.value; limit = 25; draw(); } }, 150));
-    $("[data-est]", el).onclick = e => { const b = e.target.closest("button"); if (!b) return; f.estado = b.dataset.v; $$("[data-est] button", el).forEach(x => x.classList.toggle("on", x === b)); draw(); };
+    el.addEventListener("input", debounce(e => { const k = e.target.dataset.f; if (k) { f[k] = e.target.value; pg.reset(); draw(); } }, 150));
+    pg.bind($("[data-out]", el), () => draw());
+    $("[data-est]", el).onclick = e => { const b = e.target.closest("button"); if (!b) return; f.estado = b.dataset.v; pg.reset(); $$("[data-est] button", el).forEach(x => x.classList.toggle("on", x === b)); draw(); };
     el.addEventListener("click", e => {
-      if (e.target.closest("[data-more]")) { limit += 25; draw(); return; }
       const pr = e.target.closest("[data-print]"); if (pr) { e.stopPropagation(); printDoc(o.kind, store.get(o.col, pr.dataset.print)); return; }
       const tr = e.target.closest("tr[data-id]"); if (tr) o.open(store.get(o.col, tr.dataset.id));
     });
@@ -1564,14 +1606,14 @@ function ventaDetail(v, fresh) {
   const m = modal({ title: "Factura #" + v.num, size: "wide", body: `${fresh ? `<div class="note ok" style="margin-bottom:14px">${ic("i-check")}<span>Factura emitida y existencias actualizadas. Puedes imprimirla o enviarla por WhatsApp.</span></div>` : ""}
     <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px">${estadoChip(venc ? "Vencida" : v.estado)}<span class="chip plain ${v.tipo === "Exportación" ? "info" : ""}">${esc(v.tipo)}</span><span class="chip plain">${esc(v.condicion)}</span></div>
     <dl class="dl"><dt>Cliente</dt><dd>${esc(c.nombre)}${c.rnc ? ` · ${esc(c.rnc)}` : ""}</dd><dt>Fecha</dt><dd>${fdate(v.fecha)}</dd>${v.condicion === "Crédito" ? `<dt>Vence</dt><dd class="${venc ? "down" : ""}">${fdate(v.vence)}</dd>` : ""}<dt>Facturó</dt><dd>${esc(v.usuario)}</dd>${v.cotizacionId ? `<dt>Origen</dt><dd>Cotización #${store.get("cotizaciones", v.cotizacionId)?.num || "—"}</dd>` : ""}${v.notas ? `<dt>Notas</dt><dd style="font-weight:400">${esc(v.notas)}</dd>` : ""}</dl>
-    ${linesTable(v, isOwner())}
-    ${isOwner() && v.estado !== "Anulada" ? `<p class="small muted" style="text-align:right;margin:6px 0 0">Ganancia bruta: <b>${money(subDOP(v) - costoVenta(v))}</b></p>` : ""}
+    ${linesTable(v, can("finanzas.ver"))}
+    ${can("finanzas.ver") && v.estado !== "Anulada" ? `<p class="small muted" style="text-align:right;margin:6px 0 0">Ganancia bruta: <b>${money(subDOP(v) - costoVenta(v))}</b></p>` : ""}
     ${v.estado !== "Anulada" ? `<h3 style="margin:18px 0 8px">Pagos</h3>${(v.abonos || []).length ? `<div class="tbl-wrap"><table class="t"><tbody>${v.abonos.map(a => `<tr><td>${fdate(a.fecha)}</td><td>${esc(a.metodo)}</td><td class="n"><b>${money(a.monto, v.moneda)}</b></td></tr>`).join("")}</tbody></table></div>` : `<p class="muted small" style="margin:0">Sin pagos registrados.</p>`}
     <p style="text-align:right;margin:8px 0 0">Saldo pendiente: <b class="${saldo(v) > 0 ? "down" : "up"}">${money(saldo(v), v.moneda)}</b></p>` : `<div class="note" style="margin-top:14px">${ic("i-alert")}<span>Factura anulada${v.anuladaPor ? " por " + esc(v.anuladaPor) : ""}. Las existencias fueron devueltas al inventario.</span></div>`}`,
-    foot: `${isOwner() && v.estado !== "Anulada" ? `<button class="btn danger" data-anular style="margin-right:auto">Anular</button>` : ""}
+    foot: `${can("anular") && v.estado !== "Anulada" ? `<button class="btn danger" data-anular style="margin-right:auto">Anular</button>` : ""}
       ${v.estado !== "Anulada" && can("ordenes") ? `<button class="btn" data-ot>${ic("i-board")}<span>Orden de trabajo</span></button>` : ""}
       ${c.telefono ? `<a class="btn" target="_blank" rel="noopener" href="${waLink(c.telefono, `Hola ${c.contacto || c.nombre}, le compartimos la factura #${v.num} de ${store.config.empresa} por ${money(v.total, v.moneda)}.${v.estado === "Pendiente" ? " Vence el " + fdate(v.vence) + "." : ""} ¡Gracias!`)}">${ic("i-wa")}WhatsApp</a>` : ""}
-      ${v.estado === "Pendiente" ? `<button class="btn pri" data-abono>${ic("i-cash")}Registrar pago</button>` : ""}<button class="btn" data-print>${ic("i-print")}Imprimir</button>` });
+      ${v.estado === "Pendiente" && can("pagos") ? `<button class="btn pri" data-abono>${ic("i-cash")}Registrar pago</button>` : ""}<button class="btn" data-print>${ic("i-print")}Imprimir</button>` });
   m.$("[data-print]").onclick = () => printDoc("venta", v);
   m.$("[data-abono]")?.addEventListener("click", () => { m.close(); abonoForm(v); });
   m.$("[data-ot]")?.addEventListener("click", () => { m.close(); go("ordenes"); setTimeout(() => otForm(null, { clienteId: v.clienteId, titulo: "Despacho factura #" + v.num, ventaId: v.id, lineas: v.lineas.map(l => ({ productoId: l.productoId, nombre: l.nombre, cant: l.cant })) }), 60); });
@@ -1597,7 +1639,7 @@ function compraDetail(c) {
   const p = proveedor(c.proveedorId);
   const m = modal({ title: "Compra #" + c.num, size: "wide", body: `<div style="display:flex;gap:8px;margin-bottom:12px">${estadoChip(c.estado)}<span class="chip plain">${esc(c.condicion)}</span></div>
     <dl class="dl"><dt>Proveedor</dt><dd>${esc(p.nombre)}</dd><dt>Fecha</dt><dd>${fdate(c.fecha)}</dd><dt>Comprobante</dt><dd>${esc(c.documento || "—")}</dd><dt>Registró</dt><dd>${esc(c.usuario)}</dd>${c.notas ? `<dt>Notas</dt><dd style="font-weight:400">${esc(c.notas)}</dd>` : ""}</dl>${linesTable(c)}`,
-    foot: `${isOwner() && c.estado !== "Anulada" ? `<button class="btn danger" data-anular style="margin-right:auto">Anular</button>` : ""}${c.estado === "Pendiente" && isOwner() ? `<button class="btn pri" data-pagar>${ic("i-cash")}Marcar pagada</button>` : ""}<button class="btn" data-print>${ic("i-print")}Imprimir</button>` });
+    foot: `${can("anular") && c.estado !== "Anulada" ? `<button class="btn danger" data-anular style="margin-right:auto">Anular</button>` : ""}${c.estado === "Pendiente" && can("pagos") ? `<button class="btn pri" data-pagar>${ic("i-cash")}Marcar pagada</button>` : ""}<button class="btn" data-print>${ic("i-print")}Imprimir</button>` });
   m.$("[data-print]").onclick = () => printDoc("compra", c);
   m.$("[data-pagar]")?.addEventListener("click", () => { c.estado = "Pagada"; c.pagadaEl = today(); store.put("compras", c); m.close(); route(); toast("Compra marcada como pagada"); });
   m.$("[data-anular]")?.addEventListener("click", async () => {
@@ -1612,7 +1654,7 @@ function cotDetail(q) {
   const c = cliente(q.clienteId); const vencida = q.estado === "Pendiente" && q.valida && q.valida < today();
   const m = modal({ title: "Cotización #" + q.num, size: "wide", body: `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">${estadoChip(q.estado)}${vencida ? `<span class="chip bad">Validez vencida</span>` : ""}<span class="chip plain ${q.tipo === "Exportación" ? "info" : ""}">${esc(q.tipo)}</span></div>
     <dl class="dl"><dt>Cliente</dt><dd>${esc(c.nombre)}</dd><dt>Fecha</dt><dd>${fdate(q.fecha)}</dd><dt>Válida hasta</dt><dd>${fdate(q.valida)}</dd><dt>Preparó</dt><dd>${esc(q.usuario)}</dd>${q.notas ? `<dt>Condiciones</dt><dd style="font-weight:400">${esc(q.notas)}</dd>` : ""}${q.ventaId ? `<dt>Factura</dt><dd>#${store.get("ventas", q.ventaId)?.num || "—"}</dd>` : ""}</dl>${linesTable(q)}`,
-    foot: `${isOwner() && q.estado !== "Facturada" ? `<button class="btn danger" data-del style="margin-right:auto">${ic("i-trash")}</button>` : ""}
+    foot: `${can("eliminar") && q.estado !== "Facturada" ? `<button class="btn danger" data-del style="margin-right:auto">${ic("i-trash")}</button>` : ""}
     ${q.estado === "Pendiente" ? `<button class="btn" data-st="Rechazada">Rechazada</button><button class="btn" data-st="Aceptada">Aceptada</button><button class="btn" data-edit>${ic("i-edit")}Editar</button>` : ""}
     ${c.telefono ? `<a class="btn" target="_blank" rel="noopener" href="${waLink(c.telefono, `Hola ${c.contacto || c.nombre}, le compartimos la cotización #${q.num} de ${store.config.empresa} por ${money(q.total, q.moneda)}, válida hasta el ${fdate(q.valida)}.`)}">${ic("i-wa")}WhatsApp</a>` : ""}
     <button class="btn" data-print>${ic("i-print")}Imprimir</button>
@@ -1688,7 +1730,7 @@ function otForm(o, pre) {
     <label class="field"><span>Etapa</span><select class="input" name="estado">${STAGES.map(([k, l]) => `<option value="${k}" ${o.estado === k ? "selected" : ""}>${l}</option>`).join("")}</select></label></div>
     <div class="field"><span>Productos</span><div class="grid" style="gap:8px" data-rows>${(o.lineas.length ? o.lineas : [{}]).map(lineRow).join("")}</div><button type="button" class="btn sm" style="width:max-content" data-addrow>${ic("i-plus")}Agregar línea</button></div>
     <label class="field"><span>Instrucciones</span><textarea class="input" name="notas" rows="3" placeholder="Temperatura, tipo de caja, etiquetas, naviera…">${esc(o.notas)}</textarea></label></form>`,
-    foot: `${!nuevo && isOwner() ? `<button class="btn danger" data-del style="margin-right:auto">${ic("i-trash")}</button>` : ""}${!nuevo ? `<button class="btn" data-print>${ic("i-print")}Imprimir</button>` : ""}<button class="btn" data-close>Cancelar</button><button class="btn pri" data-save>${nuevo ? "Crear orden" : "Guardar cambios"}</button>` });
+    foot: `${!nuevo && can("eliminar") ? `<button class="btn danger" data-del style="margin-right:auto">${ic("i-trash")}</button>` : ""}${!nuevo ? `<button class="btn" data-print>${ic("i-print")}Imprimir</button>` : ""}<button class="btn" data-close>Cancelar</button><button class="btn pri" data-save>${nuevo ? "Crear orden" : "Guardar cambios"}</button>` });
   const rows = m.$("[data-rows]");
   m.$("[data-addrow]").onclick = () => rows.insertAdjacentHTML("beforeend", lineRow());
   rows.addEventListener("click", e => { if (e.target.closest("[data-rmrow]")) { e.target.closest("[data-row]").remove(); if (!rows.children.length) rows.insertAdjacentHTML("beforeend", lineRow()); } });
@@ -1706,7 +1748,7 @@ function otForm(o, pre) {
 
 /* ---------------- Presupuesto ---------------- */
 VIEWS.presupuesto = el => {
-  let mes = S.presMes || ym(today());
+  let mes = S.presMes || ym(today()); const pg = pager("gastos", [8, 16, 32]);
   const draw = () => {
     S.presMes = mes;
     let pres = store.all("presupuestos").find(p => p.mes === mes);
@@ -1731,12 +1773,13 @@ VIEWS.presupuesto = el => {
         ${partidas.length || sinPres.length ? `<div class="bars">${partidas.map(p => { const r = real(p.categoria), k = pct(r, p.monto); return `<div class="bar-row"><div class="t"><span>${esc(p.categoria)}</span><span class="num ${k > 100 ? "down" : "muted"}">${money(r)} / ${money(p.monto)} · ${k}%</span></div><div class="track"><i style="width:${Math.min(100, k)}%;background:${k > 100 ? "var(--chili)" : k > 85 ? "var(--sun)" : "var(--brand)"}"></i></div></div>`; }).join("")}
           ${sinPres.map(c => `<div class="bar-row"><div class="t"><span>${esc(c)} <span class="chip warn plain">Sin presupuesto</span></span><span class="num down">${money(real(c))}</span></div><div class="track"><i style="width:100%;background:var(--chili)"></i></div></div>`).join("")}</div>
           <p class="small muted" style="margin:14px 0 0">“Compras de mercancía” se toma automáticamente de las compras registradas.</p>` : `<div class="empty">Sin partidas todavía.</div>`}</section>
-        <section class="panel flush"><header><h2>Gastos del mes</h2><span class="small muted">${gastos.length}</span></header><div class="feed">${gastos.map(g => `<a data-g="${g.id}"><span class="ic" style="background:var(--surface-2)">${ic("i-cash")}</span><span><b>${esc(g.descripcion || g.categoria)}</b><small>${esc(g.categoria)} · ${fdate(g.fecha)}</small></span><span class="num" style="font-weight:700">${money(g.monto)}</span></a>`).join("") || `<div class="empty">Aún no hay gastos en este mes.</div>`}</div></section></div>`;
-    $("[data-mes]", el).onchange = e => { if (e.target.value) { mes = e.target.value; draw(); } };
+        <section class="panel flush"><header><h2>Gastos del mes</h2><span class="small muted">${gastos.length}</span></header><div class="feed">${pg.slice(gastos).map(g => `<a data-g="${g.id}"><span class="ic" style="background:var(--surface-2)">${ic("i-cash")}</span><span><b>${esc(g.descripcion || g.categoria)}</b><small>${esc(g.categoria)} · ${fdate(g.fecha)}</small></span><span class="num" style="font-weight:700">${money(g.monto)}</span></a>`).join("") || `<div class="empty">Aún no hay gastos en este mes.</div>`}</div><div style="padding:0 14px">${pg.html(gastos.length)}</div></section></div>`;
+    $("[data-mes]", el).onchange = e => { if (e.target.value) { mes = e.target.value; pg.reset(); draw(); } };
     $("[data-gasto]", el).onclick = () => gastoForm(null, [...partidas.map(p => p.categoria).filter(c => c !== "Compras de mercancía"), ...sinPres], draw);
     $$("[data-g]", el).forEach(a => a.onclick = () => gastoForm(store.get("gastos", a.dataset.g), partidas.map(p => p.categoria).filter(c => c !== "Compras de mercancía"), draw));
     $("[data-edit]", el).onclick = () => presForm(pres || { mes, metaVentas: prevP?.metaVentas || 0, partidas: JSON.parse(JSON.stringify(prevP?.partidas || [{ categoria: "Compras de mercancía", monto: 0 }, { categoria: "Nómina", monto: 0 }])) }, draw);
   };
+  pg.bind(el, () => draw());
   draw();
 };
 function presForm(p, done) {
@@ -1763,62 +1806,166 @@ function gastoForm(g, cats, done) {
 }
 
 /* ---------------- Reportes ---------------- */
+const PDF_LIBS = ["https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js", "https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"];
+const scriptCache = {};
+const loadScript = src => scriptCache[src] ||= new Promise((res, rej) => { const sc = document.createElement("script"); sc.src = src; sc.onload = res; sc.onerror = () => { delete scriptCache[src]; rej(new Error("No se pudo cargar el generador de PDF. Revisa la conexión a internet.")); }; document.head.append(sc); });
+const REP_TABS = [["ventas", "Ventas"], ["utilidades", "Utilidades"], ["cxc", "Cuentas por cobrar"], ["cxp", "Cuentas por pagar"], ["inventario", "Inventario"], ["ordenes", "Órdenes de trabajo"]];
+const cellT = c => c == null ? "" : typeof c === "object" ? (c.t ?? "") : String(c);
+const cellH = c => c == null ? "" : typeof c === "object" ? (c.h ?? esc(c.t ?? "")) : esc(c);
+
+function buildReport(tab, f) {
+  const t = today(); const V = ventasOK().filter(v => inRange(v.fecha, f.desde, f.hasta)); const C = comprasOK().filter(c => inRange(c.fecha, f.desde, f.hasta));
+  const thumb = p => `<div class="cell-main"><span class="thumb" style="width:32px;height:32px">${photo(p)}</span><span><b>${esc(p.nombre)}</b>${p.sku ? `<small>${esc(p.sku)}</small>` : ""}</span></div>`;
+  const R = { tab, title: REP_TABS.find(x => x[0] === tab)[1], period: `Del ${fdate(f.desde)} al ${fdate(f.hasta)}`, kpis: [], cols: [], rows: [], foot: null, extra: "", csv: [], note: "" };
+  if (tab === "ventas") {
+    const tot = V.reduce((a, v) => a + subDOP(v), 0); const exp = V.filter(v => v.tipo === "Exportación").reduce((a, v) => a + subDOP(v), 0);
+    const byCli = {}; V.forEach(v => byCli[v.clienteId] = (byCli[v.clienteId] || 0) + subDOP(v));
+    const days = {}; V.forEach(v => days[v.fecha] = (days[v.fecha] || 0) + subDOP(v)); const dk = Object.keys(days).sort();
+    R.kpis = [["Vendido sin ITBIS", money(tot), V.length + " facturas"], ["Ticket promedio", money(V.length ? tot / V.length : 0)], ["Exportación", (tot ? Math.round(exp / tot * 100) : 0) + "%", money(exp)], ["ITBIS facturado", money(V.filter(v => v.moneda === "DOP").reduce((a, v) => a + v.itbis, 0))]];
+    R.extra = `<div class="dash" style="margin-bottom:16px"><section class="panel"><header><h2>Ventas por día</h2></header>${dk.length > 1 ? lineChart(dk.map(d => d.slice(8) + "/" + d.slice(5, 7)), [{ name: "Ventas", color: isDark() ? "#FF5A4E" : "#D4271F", values: dk.map(d => r2(days[d])) }], { h: 220 }) : `<div class="empty">Se necesitan al menos dos días con ventas.</div>`}</section>
+      <section class="panel"><header><h2>Por cliente</h2></header>${bars(Object.entries(byCli).map(([id, v]) => ({ label: cliente(id).nombre, value: r2(v) })).sort((a, b) => b.value - a.value).slice(0, 8))}</section></div>`;
+    R.cols = [{ h: "Factura" }, { h: "Fecha" }, { h: "Cliente" }, { h: "Tipo" }, { h: "Total", r: 1 }, { h: "Total RD$", r: 1 }, { h: "Estado" }];
+    R.rows = V.slice().sort((a, b) => b.fecha.localeCompare(a.fecha) || b.num - a.num).map(v => ["#" + v.num, fdate(v.fecha), cliente(v.clienteId).nombre, v.tipo, money(v.total, v.moneda), money(toDOP(v)), { t: v.estado, h: estadoChip(v.estado) }]);
+    R.foot = ["Total", "", "", "", "", money(V.reduce((a, v) => a + toDOP(v), 0)), ""];
+    R.csv = [["Factura", "Fecha", "Cliente", "Tipo", "Moneda", "Subtotal", "ITBIS", "Total", "Total RD$", "Estado", "Vendedor"], ...V.map(v => [v.num, v.fecha, cliente(v.clienteId).nombre, v.tipo, v.moneda, v.subtotal, v.itbis, v.total, toDOP(v), v.estado, v.usuario])];
+  } else if (tab === "utilidades") {
+    const ing = V.reduce((a, v) => a + subDOP(v), 0), cos = V.reduce((a, v) => a + costoVenta(v), 0); const G = store.all("gastos").filter(g => inRange(g.fecha, f.desde, f.hasta)); const gas = G.reduce((a, g) => a + g.monto, 0);
+    const bp = {}; V.forEach(v => v.lineas.forEach(l => { const k = l.productoId; bp[k] ||= { u: 0, i: 0, c: 0 }; bp[k].u += l.cant; bp[k].i += l.cant * l.precio * (v.moneda === "USD" ? v.tasa : 1); bp[k].c += l.cant * (l.costo || 0); }));
+    const list = Object.entries(bp).map(([id, x]) => ({ p: producto(id) || { nombre: "—" }, ...x, g: x.i - x.c })).sort((a, b) => b.g - a.g);
+    R.kpis = [["Ingresos netos", money(ing)], ["Costo de lo vendido", money(cos)], ["Gastos operativos", money(gas), G.length + " gastos"], ["Utilidad neta", money(ing - cos - gas), "Margen bruto " + (ing ? ((ing - cos) / ing * 100).toFixed(1) : 0) + "%"]];
+    R.cols = [{ h: "Producto" }, { h: "Unidades", r: 1 }, { h: "Ingreso", r: 1 }, { h: "Costo", r: 1 }, { h: "Ganancia", r: 1 }, { h: "Margen", r: 1 }];
+    R.rows = list.map(x => [{ t: x.p.nombre, h: thumb(x.p) }, qty(x.u), money(x.i), money(x.c), { t: money(x.g), h: `<b>${money(x.g)}</b>` }, (x.i ? x.g / x.i * 100 : 0).toFixed(1) + "%"]);
+    R.foot = ["Total", "", money(ing), money(cos), money(ing - cos), ing ? ((ing - cos) / ing * 100).toFixed(1) + "%" : ""];
+    R.csv = [["Producto", "Unidades", "Ingreso RD$", "Costo RD$", "Ganancia RD$", "Margen %"], ...list.map(x => [x.p.nombre, x.u, r2(x.i), r2(x.c), r2(x.g), x.i ? r2(x.g / x.i * 100) : 0])];
+  } else if (tab === "cxc") {
+    const P = ventasOK().filter(v => v.estado === "Pendiente").sort((a, b) => (a.vence || "").localeCompare(b.vence || ""));
+    const dias = v => v.vence ? Math.floor((new Date(t) - new Date(v.vence)) / 864e5) : 0; const sd = v => v.moneda === "USD" ? saldo(v) * v.tasa : saldo(v);
+    const B = [["Al día", v => dias(v) <= 0], ["1 a 30 días", v => dias(v) > 0 && dias(v) <= 30], ["31 a 60 días", v => dias(v) > 30 && dias(v) <= 60], ["Más de 60 días", v => dias(v) > 60]];
+    R.period = "Al " + fdate(t); R.note = "Muestra todas las facturas pendientes, sin importar el rango de fechas.";
+    R.kpis = B.map(([l, fn]) => [l, money(P.filter(fn).reduce((a, v) => a + sd(v), 0)), P.filter(fn).length + " facturas"]);
+    R.cols = [{ h: "Factura" }, { h: "Cliente" }, { h: "Vence" }, { h: "Atraso", r: 1 }, { h: "Saldo", r: 1 }, { h: "Saldo RD$", r: 1 }, { h: "", screen: 1 }];
+    R.rows = P.map(v => ["#" + v.num, cliente(v.clienteId).nombre, fdate(v.vence), dias(v) > 0 ? { t: dias(v) + " días", h: `<span class="down">${dias(v)} días</span>` } : "Al día", money(saldo(v), v.moneda), money(sd(v)), { t: "", h: can("pagos") ? `<button class="btn sm" data-cobrar="${v.id}">Registrar pago</button>` : "" }]);
+    R.foot = ["Total", "", "", "", "", money(P.reduce((a, v) => a + sd(v), 0)), ""];
+    R.csv = [["Factura", "Cliente", "Fecha", "Vence", "Días vencida", "Moneda", "Saldo", "Saldo RD$"], ...P.map(v => [v.num, cliente(v.clienteId).nombre, v.fecha, v.vence, Math.max(0, dias(v)), v.moneda, saldo(v), r2(sd(v))])];
+  } else if (tab === "cxp") {
+    const P = comprasOK().filter(c => c.estado === "Pendiente").sort((a, b) => a.fecha.localeCompare(b.fecha));
+    R.period = "Al " + fdate(t); R.note = "Compras a crédito pendientes de pago.";
+    R.kpis = [["Total por pagar", money(P.reduce((a, c) => a + c.total, 0)), P.length + " compras"], ["Proveedores", String(new Set(P.map(c => c.proveedorId)).size)]];
+    R.cols = [{ h: "Compra" }, { h: "Proveedor" }, { h: "Fecha" }, { h: "Comprobante" }, { h: "Total", r: 1 }, { h: "", screen: 1 }];
+    R.rows = P.map(c => ["#" + c.num, proveedor(c.proveedorId).nombre, fdate(c.fecha), c.documento || "—", money(c.total), { t: "", h: `<button class="btn sm" data-ver="${c.id}">Ver</button>` }]);
+    R.foot = ["Total", "", "", "", money(P.reduce((a, c) => a + c.total, 0)), ""];
+    R.csv = [["Compra", "Proveedor", "Fecha", "Comprobante", "Total"], ...P.map(c => [c.num, proveedor(c.proveedorId).nombre, c.fecha, c.documento, c.total])];
+  } else if (tab === "inventario") {
+    const P = store.all("productos").slice().sort((a, b) => b.stock * b.costo - a.stock * a.costo);
+    const vc = P.reduce((a, p) => a + Math.max(0, p.stock) * p.costo, 0), vv = P.reduce((a, p) => a + Math.max(0, p.stock) * p.precio, 0);
+    R.period = "Existencias al " + fdate(t);
+    R.kpis = [["Valor al costo", money(vc)], ["Valor a precio de venta", money(vv)], ["Con stock bajo", String(lowStock().length), "productos"], ["Agotados", String(P.filter(p => p.stock <= 0).length), "productos"]];
+    R.cols = [{ h: "Producto" }, { h: "Existencia", r: 1 }, { h: "Mínimo", r: 1 }, { h: "Costo", r: 1 }, { h: "Valor al costo", r: 1 }, { h: "Valor de venta", r: 1 }];
+    R.rows = P.map(p => [{ t: p.nombre + " (" + p.sku + ")", h: thumb(p) }, { t: qty(p.stock), h: heat(p) }, qty(p.minimo), money(p.costo), money(Math.max(0, p.stock) * p.costo), money(Math.max(0, p.stock) * p.precio)]);
+    R.foot = ["Total", "", "", "", money(vc), money(vv)];
+    R.csv = [["SKU", "Producto", "Categoría", "Existencia", "Mínimo", "Costo", "Valor al costo", "Precio", "Valor a precio de venta"], ...P.map(p => [p.sku, p.nombre, p.categoria, p.stock, p.minimo, p.costo, r2(p.stock * p.costo), p.precio, r2(p.stock * p.precio)])];
+  } else {
+    const O = store.all("ordenes").filter(o => inRange(o.entrega, f.desde, f.hasta) || inRange(o.fecha, f.desde, f.hasta) || o.estado !== "Despachada").sort((a, b) => a.entrega.localeCompare(b.entrega));
+    const desp = O.filter(o => o.estado === "Despachada"); const aTiempo = desp.filter(o => (o.despachada || o.entrega) <= o.entrega);
+    const late = O.filter(o => o.estado !== "Despachada" && o.entrega < t);
+    const stg = k => STAGES.find(s => s[0] === k) || [k, k, "var(--muted)"];
+    R.period = `Del ${fdate(f.desde)} al ${fdate(f.hasta)}`; R.note = "Incluye las órdenes creadas o con entrega en el período, y todas las que siguen activas.";
+    R.kpis = [["Órdenes", String(O.length), "en el reporte"], ["Despachadas", String(desp.length), O.length ? Math.round(desp.length / O.length * 100) + "% del total" : ""], ["Entregadas a tiempo", desp.length ? Math.round(aTiempo.length / desp.length * 100) + "%" : "—", aTiempo.length + " de " + desp.length], ["Atrasadas", String(late.length), "sin despachar y vencidas"]];
+    const byResp = {}; O.forEach(o => byResp[o.responsable || "Sin asignar"] = (byResp[o.responsable || "Sin asignar"] || 0) + 1);
+    R.extra = `<div class="dash" style="margin-bottom:16px"><section class="panel"><header><h2>Por etapa</h2></header>${bars(STAGES.map(([k, l, c]) => ({ label: l, value: O.filter(o => o.estado === k).length, color: c })), { fmt: v => v + (v === 1 ? " orden" : " órdenes") })}</section>
+      <section class="panel"><header><h2>Por responsable</h2></header>${bars(Object.entries(byResp).map(([k, v]) => ({ label: k, value: v })).sort((a, b) => b.value - a.value), { fmt: v => v + (v === 1 ? " orden" : " órdenes") })}</section></div>`;
+    R.cols = [{ h: "OT" }, { h: "Trabajo" }, { h: "Cliente" }, { h: "Responsable" }, { h: "Prioridad" }, { h: "Entrega" }, { h: "Etapa" }, { h: "Despacho" }];
+    R.rows = O.map(o => { const d = o.estado === "Despachada"; const ok = d && (o.despachada || o.entrega) <= o.entrega; const lt = !d && o.entrega < t;
+      return ["OT-" + o.num, o.titulo, cliente(o.clienteId).nombre, o.responsable || "—", o.prioridad, { t: fdate(o.entrega), h: lt ? `<span class="down">${fdate(o.entrega)}</span>` : fdate(o.entrega) },
+        { t: stg(o.estado)[1], h: `<span class="chip plain" style="color:${stg(o.estado)[2]}">${stg(o.estado)[1]}</span>` },
+        d ? { t: fdate(o.despachada || o.entrega) + (ok ? " · a tiempo" : " · tarde"), h: `${fdate(o.despachada || o.entrega)} <span class="chip ${ok ? "ok" : "bad"}">${ok ? "A tiempo" : "Tarde"}</span>` } : lt ? { t: "Atrasada", h: `<span class="chip bad">Atrasada</span>` } : "Pendiente"]; });
+    R.csv = [["OT", "Trabajo", "Cliente", "Responsable", "Prioridad", "Creada", "Entrega", "Etapa", "Despachada", "Productos"], ...O.map(o => ["OT-" + o.num, o.titulo, cliente(o.clienteId).nombre, o.responsable, o.prioridad, o.fecha, o.entrega, stg(o.estado)[1], o.despachada || "", o.lineas.map(l => l.cant + " x " + l.nombre).join("; ")])];
+  }
+  return R;
+}
+function reportTableHTML(R, rows) {
+  return `<div class="tbl-wrap"><table class="t"><thead><tr>${R.cols.map(c => `<th class="${c.r ? "r" : ""}">${esc(c.h)}</th>`).join("")}</tr></thead><tbody>${rows.map(r => `<tr>${r.map((c, i) => `<td class="${R.cols[i].r ? "n" : ""}">${cellH(c)}</td>`).join("")}</tr>`).join("") || `<tr><td colspan="${R.cols.length}" class="empty">Sin datos en este período.</td></tr>`}</tbody>${R.foot && rows.length ? `<tfoot><tr>${R.foot.map((c, i) => `<td class="${R.cols[i].r ? "n" : ""}" style="font-weight:800;border-top:2px solid var(--line-2)">${esc(c)}</td>`).join("")}</tr></tfoot>` : ""}</table></div>`;
+}
+const repCols = R => R.cols.map((c, i) => [c, i]).filter(([c]) => !c.screen);
+function printReport(R) {
+  const c = store.config; const cols = repCols(R);
+  $("#print").innerHTML = `<div class="ph"><div>${c.logo ? `<img src="${c.logo}" alt=""><br>` : `<div style="width:56px">${kplLogo(true)}</div>`}<b style="font-size:13pt">${esc(c.empresa)}</b><br>RNC ${esc(c.rnc)}</div><div style="text-align:right"><h1>Reporte de ${esc(R.title.toLowerCase())}</h1>${esc(R.period)}<br><span style="color:#555">Generado el ${fdate(today())} por ${esc(S.user.nombre)}</span></div></div>
+    <div style="display:grid;grid-template-columns:repeat(${Math.min(4, R.kpis.length)},1fr);gap:8px;margin-top:12px">${R.kpis.map(k => `<div style="border:1px solid #ccc;border-radius:6px;padding:6px 8px"><div style="font-size:8.5pt;color:#555">${esc(k[0])}</div><b style="font-size:12pt">${esc(k[1])}</b>${k[2] ? `<div style="font-size:8pt;color:#555">${esc(k[2])}</div>` : ""}</div>`).join("")}</div>
+    ${R.note ? `<p style="font-size:9pt;color:#555">${esc(R.note)}</p>` : ""}
+    <table><thead><tr>${cols.map(([c]) => `<th class="${c.r ? "r" : ""}">${esc(c.h)}</th>`).join("")}</tr></thead><tbody>${R.rows.map(r => `<tr>${cols.map(([cc, i]) => `<td class="${cc.r ? "r" : ""}">${esc(cellT(r[i]))}</td>`).join("")}</tr>`).join("") || `<tr><td colspan="${cols.length}">Sin datos en este período.</td></tr>`}</tbody>
+    ${R.foot ? `<tfoot><tr>${cols.map(([cc, i]) => `<td class="${cc.r ? "r" : ""}" style="font-weight:800;border-top:2px solid #111">${esc(R.foot[i])}</td>`).join("")}</tr></tfoot>` : ""}</table>
+    <div class="foot"><span>${R.rows.length} registros</span><span>${esc(c.empresa)} · Sistema por SP BJ SOFTWARE</span></div>`;
+  setTimeout(() => window.print(), 50);
+}
+const pdfText = s => String(s ?? "").replace(/[\u00a0\u202f]/g, " ").replace(/\u2212/g, "-").replace(/\u2026/g, "...").replace(/[▲▼]/g, "");
+function svgToPng(svg, w, h) {
+  return new Promise(res => { const img = new Image(); img.onload = () => { const cv = document.createElement("canvas"); cv.width = w; cv.height = h; const x = cv.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, w, h); x.drawImage(img, 0, 0, w, h); try { res(cv.toDataURL("image/png")); } catch { res(null); } }; img.onerror = () => res(null); img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg); });
+}
+async function pdfReport(R, mode = "view") {
+  toast("Generando PDF…");
+  try { for (const src of PDF_LIBS) await loadScript(src); } catch (e) { toast(e.message, "err"); return; }
+  const { jsPDF } = window.jspdf; const cols = repCols(R); const land = cols.length > 6;
+  const doc = new jsPDF({ orientation: land ? "landscape" : "portrait", unit: "pt", format: "letter" });
+  const W = doc.internal.pageSize.getWidth(), M = 40; const c = store.config;
+  let logo = c.logo || null; if (!logo) { const svg = kplLogo(true).replace("<svg ", '<svg width="140" height="208" '); logo = await svgToPng(svg, 140, 208); }
+  try { if (logo) doc.addImage(logo, logo.startsWith("data:image/png") ? "PNG" : "JPEG", M, 30, 34, 50); } catch {}
+  doc.setFont("helvetica", "bold"); doc.setFontSize(14); doc.setTextColor(19, 33, 26); doc.text(pdfText(c.empresa), M + 44, 46);
+  doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.setTextColor(97, 112, 102); doc.text(pdfText("RNC " + c.rnc + " · " + c.telefono), M + 44, 60);
+  doc.setFont("helvetica", "bold"); doc.setFontSize(13); doc.setTextColor(19, 33, 26); doc.text(pdfText("Reporte de " + R.title.toLowerCase()), W - M, 46, { align: "right" });
+  doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.setTextColor(97, 112, 102); doc.text(pdfText(R.period), W - M, 60, { align: "right" }); doc.text(pdfText("Generado el " + fdate(today()) + " por " + S.user.nombre), W - M, 72, { align: "right" });
+  doc.setDrawColor(212, 39, 31); doc.setLineWidth(2); doc.line(M, 88, W - M, 88);
+  const kw = (W - 2 * M - 8 * (R.kpis.length - 1)) / R.kpis.length; let y = 100;
+  R.kpis.forEach((k, i) => { const x = M + i * (kw + 8); doc.setDrawColor(218, 227, 214); doc.setLineWidth(.8); doc.roundedRect(x, y, kw, 46, 5, 5); doc.setFontSize(8); doc.setTextColor(97, 112, 102); doc.text(pdfText(k[0]), x + 8, y + 13); doc.setFont("helvetica", "bold"); doc.setFontSize(11.5); doc.setTextColor(19, 33, 26); doc.text(pdfText(k[1]), x + 8, y + 29); doc.setFont("helvetica", "normal"); if (k[2]) { doc.setFontSize(7.5); doc.setTextColor(97, 112, 102); doc.text(pdfText(k[2]), x + 8, y + 40); } });
+  y += 58; if (R.note) { doc.setFontSize(8.5); doc.setTextColor(97, 112, 102); doc.text(pdfText(R.note), M, y + 4); y += 12; }
+  const colStyles = {}; cols.forEach(([cc], j) => { if (cc.r) colStyles[j] = { halign: "right" }; });
+  doc.autoTable({
+    startY: y + 4, margin: { left: M, right: M, bottom: 40 },
+    head: [cols.map(([cc]) => pdfText(cc.h))], body: R.rows.map(r => cols.map(([, i]) => pdfText(cellT(r[i])))), foot: R.foot && R.rows.length ? [cols.map(([, i]) => pdfText(R.foot[i]))] : undefined,
+    styles: { font: "helvetica", fontSize: 8.5, cellPadding: 5, textColor: [19, 33, 26], lineColor: [218, 227, 214], lineWidth: .5 },
+    headStyles: { fillColor: [30, 107, 69], textColor: 255, fontStyle: "bold" }, footStyles: { fillColor: [237, 242, 234], textColor: [19, 33, 26], fontStyle: "bold" },
+    alternateRowStyles: { fillColor: [247, 249, 246] }, columnStyles: colStyles, showFoot: "lastPage",
+    didParseCell: d => { if ((d.section === "head" || d.section === "foot") && colStyles[d.column.index]) d.cell.styles.halign = "right"; }
+  });
+  const n = doc.internal.getNumberOfPages(), H = doc.internal.pageSize.getHeight();
+  for (let i = 1; i <= n; i++) { doc.setPage(i); doc.setFontSize(8); doc.setTextColor(140, 150, 144); doc.text(pdfText(c.empresa + " · Sistema por SP BJ SOFTWARE"), M, H - 20); doc.text(`Página ${i} de ${n}`, W - M, H - 20, { align: "right" }); }
+  const name = `reporte-${R.tab}-${today()}.pdf`;
+  if (mode === "download") return doc.save(name);
+  const url = URL.createObjectURL(doc.output("blob"));
+  const m = modal({ title: "Reporte de " + R.title.toLowerCase(), size: "wide", body: `<iframe src="${url}" title="Vista del PDF" style="width:100%;height:min(70vh,760px);border:1px solid var(--line);border-radius:12px;background:#fff"></iframe><p class="small muted" style="margin:8px 0 0">Si tu navegador no muestra el PDF aquí, usa Descargar.</p>`,
+    foot: `<button class="btn" data-close>Cerrar</button><button class="btn" data-dl>${ic("i-down")}Descargar PDF</button><button class="btn pri" data-pp>${ic("i-print")}Imprimir</button>` });
+  m.$("[data-dl]").onclick = () => doc.save(name);
+  m.$("[data-pp]").onclick = () => { try { m.$("iframe").contentWindow.print(); } catch { printReport(R); } };
+  const obs = new MutationObserver(() => { if (!m.el.isConnected) { obs.disconnect(); URL.revokeObjectURL(url); } }); obs.observe(document.body, { childList: true });
+}
 VIEWS.reportes = el => {
-  const t = today(); const f = S.repF ||= { desde: t.slice(0, 8) + "01", hasta: t, tab: "ventas" };
-  el.innerHTML = `<div class="vhead"><div><h1>Reportes</h1><p>Información para decidir: qué se vende, cuánto se gana y quién debe.</p></div>
-    <div class="acts"><input class="input" type="date" data-f="desde" value="${f.desde}" style="width:auto" aria-label="Desde"><input class="input" type="date" data-f="hasta" value="${f.hasta}" style="width:auto" aria-label="Hasta"><button class="btn" data-csv>${ic("i-down")}<span class="lbl">Exportar CSV</span></button></div></div>
-    <div class="tabs" data-tabs>${[["ventas", "Ventas"], ["utilidades", "Utilidades"], ["cxc", "Cuentas por cobrar"], ["cxp", "Cuentas por pagar"], ["inventario", "Inventario"]].map(([k, l]) => `<button data-t="${k}" class="${f.tab === k ? "on" : ""}">${l}</button>`).join("")}</div><div data-out></div>`;
-  let rows = [];
-  const table = (head, body, foot) => `<div class="tbl-wrap"><table class="t"><thead><tr>${head.map(h => `<th class="${h[1] || ""}">${h[0]}</th>`).join("")}</tr></thead><tbody>${body.map(r => `<tr>${r.map((c, i) => `<td class="${head[i][1] === "r" ? "n" : ""}">${c}</td>`).join("")}</tr>`).join("") || `<tr><td colspan="${head.length}" class="empty">Sin datos en este período.</td></tr>`}</tbody>${foot ? `<tfoot><tr>${foot.map((c, i) => `<td class="${head[i][1] === "r" ? "n" : ""}" style="font-weight:800;border-top:2px solid var(--line-2)">${c}</td>`).join("")}</tr></tfoot>` : ""}</table></div>`;
+  const t = today(); const f = S.repF ||= { desde: t.slice(0, 8) + "01", hasta: t, tab: "ventas" }; const pg = pager("reportes", [15, 30, 60]); let R;
+  el.innerHTML = `<div class="vhead"><div><h1>Reportes</h1><p>Información para decidir: qué se vende, cuánto se gana, quién debe y cómo van los pedidos.</p></div>
+    <div class="acts"><input class="input" type="date" data-f="desde" value="${f.desde}" style="width:auto" aria-label="Desde"><input class="input" type="date" data-f="hasta" value="${f.hasta}" style="width:auto" aria-label="Hasta">
+    <button class="btn" data-print>${ic("i-print")}Imprimir</button><button class="btn" data-pdf>${ic("i-quote")}Ver PDF</button><button class="btn" data-csv>${ic("i-down")}CSV</button></div></div>
+    <div class="tabs" data-tabs>${REP_TABS.map(([k, l]) => `<button data-t="${k}" class="${f.tab === k ? "on" : ""}">${l}</button>`).join("")}</div><div data-out></div>`;
+  const out = $("[data-out]", el);
   const draw = () => {
-    const out = $("[data-out]", el); const V = ventasOK().filter(v => inRange(v.fecha, f.desde, f.hasta)); const C = comprasOK().filter(c => inRange(c.fecha, f.desde, f.hasta));
-    if (f.tab === "ventas") {
-      const tot = V.reduce((a, v) => a + subDOP(v), 0); const exp = V.filter(v => v.tipo === "Exportación").reduce((a, v) => a + subDOP(v), 0);
-      const byCli = {}; V.forEach(v => byCli[v.clienteId] = (byCli[v.clienteId] || 0) + subDOP(v));
-      const days = {}; V.forEach(v => days[v.fecha] = (days[v.fecha] || 0) + subDOP(v)); const dk = Object.keys(days).sort();
-      rows = [["Factura", "Fecha", "Cliente", "Tipo", "Moneda", "Subtotal", "ITBIS", "Total", "Total RD$", "Estado", "Vendedor"], ...V.map(v => [v.num, v.fecha, cliente(v.clienteId).nombre, v.tipo, v.moneda, v.subtotal, v.itbis, v.total, toDOP(v), v.estado, v.usuario])];
-      out.innerHTML = `<div class="kpis"><div class="kpi feature"><span class="lbl">Vendido sin ITBIS</span><span class="val">${money(tot)}</span><span class="delta">${V.length} facturas</span></div><div class="kpi"><span class="lbl">Ticket promedio</span><span class="val">${money(V.length ? tot / V.length : 0)}</span></div><div class="kpi"><span class="lbl">Exportación</span><span class="val">${tot ? Math.round(exp / tot * 100) : 0}%</span><span class="delta muted">${money(exp)}</span></div><div class="kpi"><span class="lbl">ITBIS facturado</span><span class="val">${money(V.filter(v => v.moneda === "DOP").reduce((a, v) => a + v.itbis, 0))}</span></div></div>
-        <div class="dash" style="margin-bottom:16px"><section class="panel"><header><h2>Ventas por día</h2></header>${dk.length > 1 ? lineChart(dk.map(d => d.slice(8) + "/" + d.slice(5, 7)), [{ name: "Ventas", color: isDark() ? "#FF5A4E" : "#D4271F", values: dk.map(d => r2(days[d])) }], { h: 220 }) : `<div class="empty">Se necesitan al menos dos días con ventas.</div>`}</section>
-        <section class="panel"><header><h2>Por cliente</h2></header>${bars(Object.entries(byCli).map(([id, v]) => ({ label: cliente(id).nombre, value: r2(v) })).sort((a, b) => b.value - a.value).slice(0, 8))}</section></div>
-        ${table([["Factura"], ["Fecha"], ["Cliente"], ["Tipo"], ["Total", "r"], ["Total RD$", "r"], ["Estado"]], V.slice().sort((a, b) => b.fecha.localeCompare(a.fecha)).map(v => [`#${v.num}`, fdate(v.fecha), esc(cliente(v.clienteId).nombre), esc(v.tipo), money(v.total, v.moneda), money(toDOP(v)), estadoChip(v.estado)]), ["", "", "", "", "", money(V.reduce((a, v) => a + toDOP(v), 0)), ""])}`;
-    } else if (f.tab === "utilidades") {
-      const ing = V.reduce((a, v) => a + subDOP(v), 0), cos = V.reduce((a, v) => a + costoVenta(v), 0); const G = store.all("gastos").filter(g => inRange(g.fecha, f.desde, f.hasta)); const gas = G.reduce((a, g) => a + g.monto, 0);
-      const bp = {}; V.forEach(v => v.lineas.forEach(l => { const k = l.productoId; bp[k] ||= { u: 0, i: 0, c: 0 }; bp[k].u += l.cant; bp[k].i += l.cant * l.precio * (v.moneda === "USD" ? v.tasa : 1); bp[k].c += l.cant * (l.costo || 0); }));
-      const list = Object.entries(bp).map(([id, x]) => ({ p: producto(id) || { nombre: "—" }, ...x, g: x.i - x.c })).sort((a, b) => b.g - a.g);
-      rows = [["Producto", "Unidades", "Ingreso RD$", "Costo RD$", "Ganancia RD$", "Margen %"], ...list.map(x => [x.p.nombre, x.u, r2(x.i), r2(x.c), r2(x.g), x.i ? r2(x.g / x.i * 100) : 0])];
-      out.innerHTML = `<div class="kpis"><div class="kpi"><span class="lbl">Ingresos netos</span><span class="val">${money(ing)}</span></div><div class="kpi"><span class="lbl">Costo de lo vendido</span><span class="val">${money(cos)}</span></div><div class="kpi"><span class="lbl">Gastos operativos</span><span class="val">${money(gas)}</span><span class="delta muted">${G.length} gastos</span></div><div class="kpi feature"><span class="lbl">Utilidad neta</span><span class="val">${money(ing - cos - gas)}</span><span class="delta ${ing - cos - gas >= 0 ? "up" : "down"}">Margen bruto ${ing ? ((ing - cos) / ing * 100).toFixed(1) : 0}%</span></div></div>
-        ${table([["Producto"], ["Unidades", "r"], ["Ingreso", "r"], ["Costo", "r"], ["Ganancia", "r"], ["Margen", "r"]], list.map(x => [`<div class="cell-main"><span class="thumb" style="width:32px;height:32px">${photo(x.p)}</span><b>${esc(x.p.nombre)}</b></div>`, qty(x.u), money(x.i), money(x.c), `<b>${money(x.g)}</b>`, (x.i ? x.g / x.i * 100 : 0).toFixed(1) + "%"]), ["Total", "", money(ing), money(cos), money(ing - cos), ing ? ((ing - cos) / ing * 100).toFixed(1) + "%" : ""])}`;
-    } else if (f.tab === "cxc") {
-      const P = ventasOK().filter(v => v.estado === "Pendiente").sort((a, b) => (a.vence || "").localeCompare(b.vence || ""));
-      const dias = v => v.vence ? Math.floor((new Date(t) - new Date(v.vence)) / 864e5) : 0; const sd = v => v.moneda === "USD" ? saldo(v) * v.tasa : saldo(v);
-      const B = [["Al día", v => dias(v) <= 0], ["1–30 días", v => dias(v) > 0 && dias(v) <= 30], ["31–60 días", v => dias(v) > 30 && dias(v) <= 60], ["Más de 60", v => dias(v) > 60]];
-      rows = [["Factura", "Cliente", "Fecha", "Vence", "Días vencida", "Moneda", "Saldo", "Saldo RD$"], ...P.map(v => [v.num, cliente(v.clienteId).nombre, v.fecha, v.vence, Math.max(0, dias(v)), v.moneda, saldo(v), r2(sd(v))])];
-      out.innerHTML = `<p class="small muted" style="margin:-6px 0 12px">Muestra todas las facturas pendientes, sin importar el rango de fechas.</p><div class="kpis">${B.map(([l, fn], i) => `<div class="kpi ${i === 0 ? "" : ""}"><span class="lbl">${l}</span><span class="val ${i > 1 ? "down" : ""}">${money(P.filter(fn).reduce((a, v) => a + sd(v), 0))}</span><span class="delta muted">${P.filter(fn).length} facturas</span></div>`).join("")}</div>
-        ${table([["Factura"], ["Cliente"], ["Vence"], ["Atraso", "r"], ["Saldo", "r"], ["Saldo RD$", "r"], [""]], P.map(v => [`#${v.num}`, esc(cliente(v.clienteId).nombre), fdate(v.vence), dias(v) > 0 ? `<span class="down">${dias(v)} días</span>` : "Al día", money(saldo(v), v.moneda), money(sd(v)), `<button class="btn sm" data-cobrar="${v.id}">Registrar pago</button>`]), ["Total", "", "", "", "", money(P.reduce((a, v) => a + sd(v), 0)), ""])}`;
-      $$("[data-cobrar]", out).forEach(b => b.onclick = () => abonoForm(store.get("ventas", b.dataset.cobrar)));
-    } else if (f.tab === "cxp") {
-      const P = comprasOK().filter(c => c.estado === "Pendiente").sort((a, b) => a.fecha.localeCompare(b.fecha));
-      rows = [["Compra", "Proveedor", "Fecha", "Comprobante", "Total"], ...P.map(c => [c.num, proveedor(c.proveedorId).nombre, c.fecha, c.documento, c.total])];
-      out.innerHTML = `<p class="small muted" style="margin:-6px 0 12px">Compras a crédito pendientes de pago.</p>${table([["Compra"], ["Proveedor"], ["Fecha"], ["Comprobante"], ["Total", "r"], [""]], P.map(c => [`#${c.num}`, esc(proveedor(c.proveedorId).nombre), fdate(c.fecha), esc(c.documento || "—"), money(c.total), `<button class="btn sm" data-ver="${c.id}">Ver</button>`]), ["Total", "", "", "", money(P.reduce((a, c) => a + c.total, 0)), ""])}`;
-      $$("[data-ver]", out).forEach(b => b.onclick = () => compraDetail(store.get("compras", b.dataset.ver)));
-    } else {
-      const P = store.all("productos").slice().sort((a, b) => b.stock * b.costo - a.stock * a.costo);
-      rows = [["SKU", "Producto", "Categoría", "Existencia", "Mínimo", "Costo", "Valor al costo", "Precio", "Valor a precio de venta"], ...P.map(p => [p.sku, p.nombre, p.categoria, p.stock, p.minimo, p.costo, r2(p.stock * p.costo), p.precio, r2(p.stock * p.precio)])];
-      out.innerHTML = `<p class="small muted" style="margin:-6px 0 12px">Existencias a hoy.</p>${table([["Producto"], ["Existencia"], ["Costo", "r"], ["Valor al costo", "r"], ["Valor a precio de venta", "r"]], P.map(p => [`<div class="cell-main"><span class="thumb" style="width:32px;height:32px">${photo(p)}</span><span><b>${esc(p.nombre)}</b><small>${esc(p.sku)}</small></span></div>`, heat(p), money(p.costo), money(Math.max(0, p.stock) * p.costo), money(Math.max(0, p.stock) * p.precio)]), ["Total", "", "", money(P.reduce((a, p) => a + Math.max(0, p.stock) * p.costo, 0)), money(P.reduce((a, p) => a + Math.max(0, p.stock) * p.precio, 0))])}`;
-    }
+    R = buildReport(f.tab, f);
+    out.innerHTML = `${R.note ? `<p class="small muted" style="margin:-6px 0 12px">${esc(R.note)}</p>` : ""}<div class="kpis">${R.kpis.map((k, i) => `<div class="kpi ${i === 0 && ["ventas", "ordenes"].includes(R.tab) || (i === 3 && R.tab === "utilidades") ? "feature" : ""}"><span class="lbl">${esc(k[0])}</span><span class="val">${esc(k[1])}</span>${k[2] ? `<span class="delta ${i === 0 && ["ventas", "ordenes"].includes(R.tab) || (i === 3 && R.tab === "utilidades") ? "" : "muted"}">${esc(k[2])}</span>` : ""}</div>`).join("")}</div>
+      ${R.extra}${reportTableHTML(R, pg.slice(R.rows))}${pg.html(R.rows.length)}`;
+    $$("[data-cobrar]", out).forEach(b => b.onclick = () => abonoForm(store.get("ventas", b.dataset.cobrar)));
+    $$("[data-ver]", out).forEach(b => b.onclick = () => compraDetail(store.get("compras", b.dataset.ver)));
   };
-  $$("[data-f]", el).forEach(i => i.onchange = () => { f[i.dataset.f] = i.value; draw(); });
-  $("[data-tabs]", el).onclick = e => { const b = e.target.closest("button"); if (!b) return; f.tab = b.dataset.t; $$("[data-tabs] button", el).forEach(x => x.classList.toggle("on", x === b)); draw(); };
-  $("[data-csv]", el).onclick = () => downloadText(`reporte-${f.tab}-${f.desde}-a-${f.hasta}.csv`, csv(rows));
+  pg.bind(out, draw);
+  $$("[data-f]", el).forEach(i => i.onchange = () => { f[i.dataset.f] = i.value; pg.reset(); draw(); });
+  $("[data-tabs]", el).onclick = e => { const b = e.target.closest("button"); if (!b) return; f.tab = b.dataset.t; pg.reset(); $$("[data-tabs] button", el).forEach(x => x.classList.toggle("on", x === b)); draw(); };
+  $("[data-csv]", el).onclick = () => downloadText(`reporte-${f.tab}-${f.desde}-a-${f.hasta}.csv`, csv(R.csv));
+  $("[data-print]", el).onclick = () => printReport(R);
+  $("[data-pdf]", el).onclick = () => pdfReport(R);
   draw();
 };
 
 /* ---------------- Kardex ---------------- */
 VIEWS.kardex = el => {
   const P = store.all("productos").slice().sort((a, b) => a.nombre.localeCompare(b.nombre)); let pid = S.kpid || P[0]?.id;
-  el.innerHTML = `<div class="vhead"><div><h1>Kardex</h1><p>Historial de entradas y salidas de cada producto, con su saldo.</p></div><div class="acts"><button class="btn" data-csv>${ic("i-down")}<span class="lbl">Exportar CSV</span></button>${canEditProducts() ? `<button class="btn pri" data-adj>${ic("i-adjust")}<span class="lbl">Ajustar existencia</span></button>` : ""}</div></div>
+  el.innerHTML = `<div class="vhead"><div><h1>Kardex</h1><p>Historial de entradas y salidas de cada producto, con su saldo.</p></div><div class="acts"><button class="btn" data-csv>${ic("i-down")}<span class="lbl">Exportar CSV</span></button>${can("inventario.ajustar") ? `<button class="btn pri" data-adj>${ic("i-adjust")}<span class="lbl">Ajustar existencia</span></button>` : ""}</div></div>
     <div class="toolbar"><select class="input" style="max-width:420px" data-p aria-label="Producto">${P.map(p => `<option value="${p.id}" ${p.id === pid ? "selected" : ""}>${esc(p.nombre)} · ${esc(p.sku)}</option>`).join("")}</select></div><div data-out></div>`;
-  let rows = [];
+  let rows = []; const pg = pager("kardex", [15, 30, 60]);
   const draw = () => {
     S.kpid = pid; const p = producto(pid); if (!p) { $("[data-out]", el).innerHTML = `<div class="panel empty">No hay productos.</div>`; return; }
     const mv = [];
@@ -1832,43 +1979,97 @@ VIEWS.kardex = el => {
     const ent = mv.reduce((a, m) => a + m.ent, 0), sal = mv.reduce((a, m) => a + m.sal, 0);
     $("[data-out]", el).innerHTML = `<div class="kpis"><div class="kpi feature"><span class="lbl">Existencia actual</span><span class="val">${qty(p.stock)}</span><span class="delta">${esc(p.unidad)}</span></div><div class="kpi"><span class="lbl">Entradas</span><span class="val up">+${qty(ent)}</span></div><div class="kpi"><span class="lbl">Salidas</span><span class="val down">−${qty(sal)}</span></div><div class="kpi"><span class="lbl">Costo promedio</span><span class="val">${money(p.costo)}</span></div></div>
     <div class="tbl-wrap"><table class="t"><thead><tr><th>Fecha</th><th>Movimiento</th><th>Tercero</th><th class="r">Entrada</th><th class="r">Salida</th><th class="r">Costo unit.</th><th class="r">Saldo</th></tr></thead><tbody>
-    <tr><td>—</td><td><b>Saldo inicial</b></td><td></td><td></td><td></td><td></td><td class="n"><b>${qty(ini)}</b></td></tr>
-    ${mv.slice().reverse().map(m => `<tr><td>${fdate(m.f)}</td><td><span class="chip ${m.tipo === "Compra" ? "ok" : m.tipo === "Venta" ? "bad" : "warn"} plain">${m.tipo}</span> ${esc(m.doc)}</td><td>${esc(m.ter)}</td><td class="n up">${m.ent ? "+" + qty(m.ent) : ""}</td><td class="n down">${m.sal ? "−" + qty(m.sal) : ""}</td><td class="n">${money(m.cu)}</td><td class="n"><b>${qty(m.saldo)}</b></td></tr>`).join("")}</tbody></table></div>`;
+    ${(() => { const rev = mv.slice().reverse(); const page = pg.slice(rev); const last = pg.st.page >= Math.ceil(rev.length / pg.st.size); return page; })().map(m => `<tr><td>${fdate(m.f)}</td><td><span class="chip ${m.tipo === "Compra" ? "ok" : m.tipo === "Venta" ? "bad" : "warn"} plain">${m.tipo}</span> ${esc(m.doc)}</td><td>${esc(m.ter)}</td><td class="n up">${m.ent ? "+" + qty(m.ent) : ""}</td><td class="n down">${m.sal ? "−" + qty(m.sal) : ""}</td><td class="n">${money(m.cu)}</td><td class="n"><b>${qty(m.saldo)}</b></td></tr>`).join("")}
+    ${pg.st.page >= Math.max(1, Math.ceil(mv.length / pg.st.size)) ? `<tr><td>—</td><td><b>Saldo inicial</b></td><td></td><td></td><td></td><td></td><td class="n"><b>${qty(ini)}</b></td></tr>` : ""}</tbody></table></div>${pg.html(mv.length)}`;
   };
-  $("[data-p]", el).onchange = e => { pid = e.target.value; draw(); };
+  pg.bind($("[data-out]", el), () => draw());
+  $("[data-p]", el).onchange = e => { pid = e.target.value; pg.reset(); draw(); };
   $("[data-adj]", el)?.addEventListener("click", () => ajusteForm(producto(pid)));
   $("[data-csv]", el).onclick = () => downloadText(`kardex-${producto(pid)?.sku || ""}.csv`, csv(rows));
   draw();
 };
 
 /* ---------------- Usuarios y roles ---------------- */
+const roleColor = name => { const i = store.all("roles").findIndex(r => r.nombre === name); return ["var(--chili)", "var(--brand)", "var(--sun)", "var(--sky)", "#8E5BB5", "#2F8F8A"][Math.max(0, i) % 6]; };
 VIEWS.usuarios = el => {
-  const U = store.all("usuarios");
-  const perms = [["Panel con métricas del negocio", "P"], ["Ganancias, reportes y presupuesto", "P"], ["Facturar y cotizar", "PV"], ["Clientes", "PV"], ["Registrar compras", "PA"], ["Productos (crear y editar)", "PA"], ["Proveedores y kardex", "PA"], ["Órdenes de trabajo", "PVA"], ["Anular documentos y eliminar", "P"], ["Usuarios y configuración", "P"]];
-  el.innerHTML = `<div class="vhead"><div><h1>Usuarios y roles</h1><p>El propietario ve todo; los empleados digitan y facturan según su rol.</p></div><div class="acts"><button class="btn pri" data-new>${ic("i-plus")}<span class="lbl">Nuevo usuario</span></button></div></div>
-    ${cloud.on ? `<div class="note" style="margin-bottom:14px">${ic("i-cloud")}<span>Modo nube: crea primero el acceso del empleado en Supabase (Authentication → Users) con su correo y contraseña, y luego agrégalo aquí con el mismo correo para asignarle el rol.</span></div>` : ""}
-    <div class="tbl-wrap" style="margin-bottom:20px"><table class="t cards"><thead><tr><th>Usuario</th><th>Rol</th><th>Estado</th><th class="r">Facturas emitidas</th></tr></thead><tbody>
-    ${U.map(u => `<tr class="click" data-id="${u.id}"><td class="full"><div class="cell-main"><span class="avatar" style="background:${u.rol === "Propietario" ? "var(--chili)" : u.rol === "Vendedor" ? "var(--brand)" : "var(--sun)"}">${initials(u.nombre)}</span><span><b>${esc(u.nombre)}${u.id === S.user.id ? " (tú)" : ""}</b><small>${esc(u.email)}</small></span></div></td><td data-l="Rol">${esc(u.rol)}</td><td data-l="Estado">${u.activo ? `<span class="chip ok">Activo</span>` : `<span class="chip bad">Inactivo</span>`}</td><td class="n" data-l="Facturas">${store.all("ventas").filter(v => v.usuario === u.nombre).length}</td></tr>`).join("")}</tbody></table></div>
-    <section class="panel"><header><h2>Qué puede hacer cada rol</h2></header><div class="tbl-wrap"><table class="t perm-grid"><thead><tr><th>Permiso</th><th>Propietario</th><th>Vendedor</th><th>Almacén</th></tr></thead><tbody>${perms.map(([l, r]) => `<tr><td>${l}</td>${["P", "V", "A"].map(k => `<td>${r.includes(k) ? `<span class="up">${ic("i-check").replace("<svg", '<svg style="width:18px;height:18px"')}</span>` : `<span class="muted">—</span>`}</td>`).join("")}</tr>`).join("")}</tbody></table></div></section>`;
-  $("[data-new]", el).onclick = () => userForm();
-  el.addEventListener("click", e => { const tr = e.target.closest("tr[data-id]"); if (tr) userForm(store.get("usuarios", tr.dataset.id)); });
+  const tab = S.usrTab ||= "usuarios"; const pg = pager("usuarios");
+  el.innerHTML = `<div class="vhead"><div><h1>Usuarios y roles</h1><p>Define quién entra al sistema y qué puede hacer cada rol.</p></div><div class="acts">${tab === "usuarios" ? `<button class="btn pri" data-new>${ic("i-plus")}<span class="lbl">Nuevo usuario</span></button>` : `<button class="btn pri" data-newrol>${ic("i-plus")}<span class="lbl">Nuevo rol</span></button>`}</div></div>
+    <div class="tabs" data-tabs><button data-t="usuarios" class="${tab === "usuarios" ? "on" : ""}">Usuarios</button><button data-t="roles" class="${tab === "roles" ? "on" : ""}">Roles y permisos</button></div><div data-out></div>`;
+  const out = $("[data-out]", el);
+  const draw = () => {
+    if (tab === "usuarios") {
+      const U = store.all("usuarios").slice().sort((a, b) => a.nombre.localeCompare(b.nombre));
+      out.innerHTML = `${cloud.on ? `<div class="note" style="margin-bottom:14px">${ic("i-cloud")}<span>Modo nube: crea primero el acceso del empleado en Supabase (Authentication → Users) con su correo y contraseña, y luego agrégalo aquí con el mismo correo para asignarle el rol.</span></div>` : ""}
+      <div class="tbl-wrap"><table class="t cards"><thead><tr><th>Usuario</th><th>Rol</th><th>Estado</th><th class="r">Facturas emitidas</th></tr></thead><tbody>
+      ${pg.slice(U).map(u => `<tr class="click" data-id="${u.id}"><td class="full"><div class="cell-main"><span class="avatar" style="background:${roleColor(u.rol)}">${initials(u.nombre)}</span><span><b>${esc(u.nombre)}${u.id === S.user.id ? " (tú)" : ""}</b><small>${esc(u.email)}</small></span></div></td><td data-l="Rol">${esc(u.rol)}${roleOf(u.rol) ? "" : ` <span class="chip bad">Rol eliminado</span>`}</td><td data-l="Estado">${u.activo ? `<span class="chip ok">Activo</span>` : `<span class="chip bad">Inactivo</span>`}</td><td class="n" data-l="Facturas">${store.all("ventas").filter(v => v.usuario === u.nombre).length}</td></tr>`).join("")}</tbody></table></div>${pg.html(U.length)}`;
+    } else {
+      const roles = store.all("roles");
+      out.innerHTML = `<div class="pgrid" style="grid-template-columns:repeat(auto-fill,minmax(260px,1fr));margin-bottom:20px">${roles.map(r => { const n = store.all("usuarios").filter(u => u.rol === r.nombre).length; const np = r.sistema ? ALL_PERMS.length : r.permisos.length;
+        return `<button class="panel" data-rol="${r.id}" style="text-align:left;cursor:pointer;display:grid;gap:10px;font:inherit;color:inherit"><span style="display:flex;align-items:center;gap:10px"><span class="avatar" style="background:${roleColor(r.nombre)}">${ic("i-shield")}</span><span style="flex:1"><b style="font-size:1.02rem">${esc(r.nombre)}</b><br><small class="muted">${n} ${n === 1 ? "usuario" : "usuarios"}</small></span>${r.sistema ? `<span class="chip plain">Del sistema</span>` : ""}</span>
+        <span class="small muted">${esc(r.desc || "Sin descripción")}</span><span style="display:grid;gap:4px"><span class="track"><i style="width:${np / ALL_PERMS.length * 100}%;background:${roleColor(r.nombre)}"></i></span><small class="muted">${np} de ${ALL_PERMS.length} permisos</small></span></button>`; }).join("")}</div>
+        <section class="panel"><header><h2>Qué puede hacer cada rol</h2><span class="small muted">Toca un rol para cambiar sus permisos</span></header><div class="tbl-wrap"><table class="t perm-grid"><thead><tr><th>Permiso</th>${roles.map(r => `<th>${esc(r.nombre)}</th>`).join("")}</tr></thead><tbody>
+        ${PERMS.map(g => `<tr><td colspan="${roles.length + 1}" style="background:var(--surface-2);font-weight:700;font-size:.8rem;color:var(--muted)">${g.g}</td></tr>` + g.items.map(([k, l]) => `<tr><td>${l}</td>${roles.map(r => `<td>${r.sistema || k === "dashboard" || r.permisos.includes(k) ? `<span class="up">${ic("i-check")}</span>` : `<span class="muted">—</span>`}</td>`).join("")}</tr>`).join("")).join("")}</tbody></table></div></section>`;
+    }
+  };
+  pg.bind(out, draw);
+  $("[data-tabs]", el).onclick = e => { const b = e.target.closest("button"); if (b) { S.usrTab = b.dataset.t; route(); } };
+  $("[data-new]", el)?.addEventListener("click", () => userForm());
+  $("[data-newrol]", el)?.addEventListener("click", () => roleForm());
+  out.addEventListener("click", e => { const tr = e.target.closest("tr[data-id]"); if (tr) return userForm(store.get("usuarios", tr.dataset.id)); const r = e.target.closest("[data-rol]"); if (r) roleForm(store.get("roles", r.dataset.rol)); });
+  draw();
 };
+function roleForm(r) {
+  const nuevo = !r; r = r ? JSON.parse(JSON.stringify(r)) : { nombre: "", desc: "", permisos: ["dashboard"] };
+  const locked = !!r.sistema; const has = k => locked || k === "dashboard" || r.permisos.includes(k);
+  const users = store.all("usuarios").filter(u => u.rol === r.nombre).length;
+  const m = modal({ title: nuevo ? "Nuevo rol" : "Rol: " + r.nombre, size: "wide", body: `<form class="grid" data-f>
+    ${locked ? `<div class="note ok">${ic("i-shield")}<span>El rol Propietario es del sistema: siempre tiene todos los permisos para que nunca se pierda el acceso a la administración. Puedes cambiar su descripción.</span></div>` : ""}
+    <div class="grid g2"><label class="field"><span>Nombre del rol</span><input class="input" name="nombre" value="${esc(r.nombre)}" ${locked ? "readonly" : ""} placeholder="Ej. Supervisor de empaque"></label>
+    <label class="field"><span>Descripción</span><input class="input" name="desc" value="${esc(r.desc || "")}" placeholder="Qué hace este rol"></label></div>
+    ${PERMS.map((g, gi) => `<section class="panel" style="padding:14px"><header style="margin-bottom:10px"><h3>${g.g}</h3>${locked ? "" : `<button type="button" class="btn sm ghost" data-all="${gi}">Marcar todo</button>`}</header>
+      <div class="grid g2" style="gap:10px 18px">${g.items.map(([k, l]) => `<label class="switch"><input type="checkbox" data-perm="${k}" data-g="${gi}" ${has(k) ? "checked" : ""} ${locked || k === "dashboard" ? "disabled" : ""}> <span>${l}${PERM_NEEDS[k] ? `<br><small class="muted">Requiere ${PERMS[0].items.find(x => x[0] === PERM_NEEDS[k])[1]}</small>` : ""}</span></label>`).join("")}</div></section>`).join("")}
+    ${!nuevo ? `<p class="small muted" style="margin:0">${users} ${users === 1 ? "usuario tiene" : "usuarios tienen"} este rol. Los cambios se aplican la próxima vez que abran una pantalla.</p>` : ""}</form>`,
+    foot: `${!nuevo && !locked ? `<button class="btn danger" data-del style="margin-right:auto">${ic("i-trash")}Eliminar rol</button>` : ""}<button class="btn" data-close>Cancelar</button><button class="btn pri" data-save>${nuevo ? "Crear rol" : "Guardar cambios"}</button>` });
+  const F = m.$("[data-f]"); const box = k => F.querySelector(`[data-perm="${k}"]`);
+  F.addEventListener("change", e => {
+    const cb = e.target.closest("[data-perm]"); if (!cb) return; const k = cb.dataset.perm;
+    if (cb.checked && PERM_NEEDS[k]) box(PERM_NEEDS[k]).checked = true;
+    if (!cb.checked) Object.entries(PERM_NEEDS).forEach(([a, need]) => { if (need === k) box(a).checked = false; });
+  });
+  $$("[data-all]", m.el).forEach(b => b.onclick = () => { const cbs = $$(`[data-g="${b.dataset.all}"]:not([disabled])`, F); const on = cbs.some(c => !c.checked); cbs.forEach(c => { c.checked = on; c.dispatchEvent(new Event("change", { bubbles: true })); }); b.textContent = on ? "Quitar todo" : "Marcar todo"; });
+  m.$("[data-save]").onclick = () => {
+    if (!requireFields(F, ["nombre"])) return; const nombre = F.nombre.value.trim(); const old = r.nombre;
+    if (store.all("roles").some(x => x.id !== r.id && norm(x.nombre) === norm(nombre))) { F.nombre.classList.add("err"); return toast("Ya existe un rol con ese nombre.", "err"); }
+    r.nombre = nombre; r.desc = F.desc.value.trim();
+    if (!locked) r.permisos = ["dashboard", ...$$("[data-perm]", F).filter(c => c.checked && c.dataset.perm !== "dashboard").map(c => c.dataset.perm)];
+    store.put("roles", r);
+    if (!nuevo && old !== nombre) store.all("usuarios").filter(u => u.rol === old).forEach(u => { u.rol = nombre; store.put("usuarios", u); if (u.id === S.user.id) S.user.rol = nombre; });
+    m.close(); S.usrTab = "roles"; render(); toast(nuevo ? "Rol creado" : "Rol actualizado");
+  };
+  m.$("[data-del]")?.addEventListener("click", async () => {
+    if (users) return toast(`No se puede eliminar: ${users} ${users === 1 ? "usuario tiene" : "usuarios tienen"} este rol. Cámbiales el rol primero.`, "err");
+    if (await confirmBox(`Se eliminará el rol ${esc(r.nombre)}.`, { ok: "Eliminar rol", danger: true })) { store.del("roles", r.id); m.close(); route(); toast("Rol eliminado"); }
+  });
+}
 function userForm(u) {
-  const nuevo = !u; u = u ? { ...u } : { nombre: "", email: "", rol: "Vendedor", activo: true };
+  const nuevo = !u; u = u ? { ...u } : { nombre: "", email: "", rol: store.all("roles").find(r => !r.sistema)?.nombre || "Propietario", activo: true };
+  const lockOwner = !isOwner() && u.rol === "Propietario";
+  if (lockOwner) return toast("Solo un propietario puede modificar a otro propietario.", "err");
   const m = modal({ title: nuevo ? "Nuevo usuario" : u.nombre, body: `<form class="grid" data-f><div class="grid g2"><label class="field"><span>Nombre completo</span><input class="input" name="nombre" value="${esc(u.nombre)}"></label><label class="field"><span>Correo</span><input class="input" type="email" name="email" value="${esc(u.email)}" autocomplete="off"></label></div>
-    <div class="field"><span>Rol</span><div class="grid" style="gap:8px">${Object.entries(ROLES).map(([r, x]) => `<label class="demo-users" style="display:block"><span style="display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid var(--line);border-radius:12px;cursor:pointer"><input type="radio" name="rol" value="${r}" ${u.rol === r ? "checked" : ""} style="margin-top:4px"><span><b>${r}</b><br><small class="muted">${x.desc}</small></span></span></label>`).join("")}</div></div>
+    <div class="field"><span>Rol</span><div class="grid" style="gap:8px">${store.all("roles").map(r => { const dis = r.sistema && !isOwner(); return `<label style="display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid var(--line);border-radius:12px;cursor:${dis ? "not-allowed" : "pointer"};opacity:${dis ? .5 : 1}"><input type="radio" name="rol" value="${esc(r.nombre)}" ${u.rol === r.nombre ? "checked" : ""} ${dis ? "disabled" : ""} style="margin-top:4px"><span><b>${esc(r.nombre)}</b><br><small class="muted">${esc(r.desc || "")}</small></span></label>`; }).join("")}</div></div>
     ${!cloud.on ? `<label class="field"><span>${nuevo ? "Contraseña" : "Nueva contraseña (deja vacío para no cambiarla)"}</span><input class="input" type="password" name="pass" autocomplete="new-password"></label>` : ""}
     <label class="switch"><input type="checkbox" name="activo" ${u.activo ? "checked" : ""}> Puede entrar al sistema</label></form>`,
-    foot: `${!nuevo && u.id !== S.user.id ? `<button class="btn danger" data-del style="margin-right:auto">${ic("i-trash")}Eliminar</button>` : ""}<button class="btn" data-close>Cancelar</button><button class="btn pri" data-save>${nuevo ? "Crear usuario" : "Guardar cambios"}</button>` });
+    foot: `${!nuevo && u.id !== S.user.id && can("eliminar") ? `<button class="btn danger" data-del style="margin-right:auto">${ic("i-trash")}Eliminar</button>` : ""}<button class="btn" data-close>Cancelar</button><button class="btn pri" data-save>${nuevo ? "Crear usuario" : "Guardar cambios"}</button>` });
   const F = m.$("[data-f]");
   const ownersLeft = (excl) => store.all("usuarios").filter(x => x.id !== excl && x.rol === "Propietario" && x.activo).length;
   m.$("[data-save]").onclick = async () => {
     if (!requireFields(F, ["nombre", "email"])) return; const d = formData(F); d.email = d.email.toLowerCase();
+    if (!d.rol) return toast("Elige un rol.", "err");
     if (store.all("usuarios").some(x => x.email.toLowerCase() === d.email && x.id !== u.id)) return toast("Ya existe un usuario con ese correo.", "err");
     if (!cloud.on && nuevo && !d.pass) return toast("Asigna una contraseña.", "err");
     if (u.rol === "Propietario" && (d.rol !== "Propietario" || !d.activo) && !ownersLeft(u.id)) return toast("Debe quedar al menos un propietario activo.", "err");
     const o = { ...u, nombre: d.nombre, email: d.email, rol: d.rol, activo: d.activo }; if (d.pass) o.passHash = await sha(d.pass);
-    store.put("usuarios", o); if (o.id === S.user.id) { S.user = o; render(); } else route(); m.close(); toast(nuevo ? "Usuario creado" : "Usuario actualizado");
+    store.put("usuarios", o); m.close(); if (o.id === S.user.id) { S.user = o; render(); } else route(); toast(nuevo ? "Usuario creado" : "Usuario actualizado");
   };
   m.$("[data-del]")?.addEventListener("click", async () => {
     if (u.rol === "Propietario" && !ownersLeft(u.id)) return toast("Debe quedar al menos un propietario activo.", "err");
