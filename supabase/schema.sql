@@ -361,14 +361,33 @@ select r.id as venta_id, (r.data->>'num')::bigint as factura, (a->>'fecha')::dat
   from public.registros r, jsonb_array_elements(coalesce(r.data->'abonos', '[]'::jsonb)) a
  where r.coleccion = 'ventas' and r.data->>'estado' <> 'Anulada';
 
+drop view if exists public.v_compras;
 create or replace view public.v_compras with (security_invoker = true) as
 select r.id, (r.data->>'num')::bigint as numero, (r.data->>'fecha')::date as fecha, r.data->>'documento' as ncf_suplidor,
        r.data->>'proveedorId' as proveedor_id, p.data->>'nombre' as proveedor, r.data->>'condicion' as condicion,
        (r.data->>'subtotal')::numeric as subtotal, (r.data->>'itbis')::numeric as itbis, (r.data->>'total')::numeric as total,
+       pg.pagado,
+       case when r.data->>'estado' = 'Anulada' then 0 else greatest(0, (r.data->>'total')::numeric - pg.pagado) end as saldo,
        r.data->>'estado' as estado, r.data->>'usuario' as usuario, r.updated_at
   from public.registros r
   left join public.registros p on p.coleccion = 'proveedores' and p.id = r.data->>'proveedorId'
+  cross join lateral (
+    select case
+             when r.data ? 'pagos' then coalesce((select sum((x->>'monto')::numeric) from jsonb_array_elements(r.data->'pagos') x), 0)
+             when r.data->>'estado' = 'Pagada' then (r.data->>'total')::numeric
+             else 0 end as pagado
+  ) pg
  where r.coleccion = 'compras';
+
+-- Pagos hechos a proveedores (uno por fila)
+create or replace view public.v_pagos_compras with (security_invoker = true) as
+select r.id as compra_id, (r.data->>'num')::bigint as compra, p.data->>'nombre' as proveedor,
+       (x->>'fecha')::date as fecha, x->>'metodo' as metodo, x->>'referencia' as referencia,
+       (x->>'monto')::numeric as monto, x->>'usuario' as usuario
+  from public.registros r
+  left join public.registros p on p.coleccion = 'proveedores' and p.id = r.data->>'proveedorId'
+  cross join lateral jsonb_array_elements(coalesce(r.data->'pagos', '[]'::jsonb)) x
+ where r.coleccion = 'compras' and r.data->>'estado' <> 'Anulada';
 
 create or replace view public.v_compras_lineas with (security_invoker = true) as
 select r.id as compra_id, (r.data->>'num')::bigint as compra, (r.data->>'fecha')::date as fecha, l->>'productoId' as producto_id,

@@ -1,6 +1,6 @@
 // Service worker: abre la app sin conexión y la mantiene actualizada.
 // Los datos (Supabase) nunca se guardan en caché: siempre van a la red.
-const CACHE = "kplagro-v5";
+const CACHE = "kplagro-v6";
 const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./icon-180.png", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", e => {

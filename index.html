@@ -899,6 +899,11 @@ function seed() {
       D.lotes.push({ id: uid(), codigo: `L${c.fecha.replace(/-/g, "").slice(2)}-${c.num}-1`, productoId: p.id, finca: pv.nombre + " (" + pv.ciudad + ")", cosecha: addDays(c.fecha, -1), fecha: c.fecha, compraId: c.id, compraNum: c.num, proveedorId: c.proveedorId, cantidad: l.cant, disponible: q }); rest = r2(rest - q); }); });
   // Datos de embarque en las exportaciones recientes
   D.ventas.filter(v => v.tipo === "Exportación").slice(-4).forEach((v, i) => v.emb = { incoterm: "FOB", transporte: i % 2 ? "Aéreo" : "Marítimo", puertoOrigen: i % 2 ? "Aeropuerto del Cibao (STI)" : "Puerto Plata, RD", puertoDestino: { "Estados Unidos": "Miami, FL", "Países Bajos": "Róterdam", "Canadá": "Toronto, ON" }[D.clientes.find(c => c.id === v.clienteId).pais] || "", paisDestino: D.clientes.find(c => c.id === v.clienteId).pais, naviera: i % 2 ? "Amerijet" : "Seaboard Marine", booking: (i % 2 ? "AWB 810-" : "SMLU") + (4410000 + i * 137), contenedor: i % 2 ? "" : "SMLU 52" + (10000 + i * 71), sello: i % 2 ? "" : "KP" + (88100 + i), fechaEmbarque: addDays(v.fecha, 2), temperatura: "7 °C", consignatario: "" });
+  // Pagos a proveedores (y uno parcial de ejemplo)
+  D.compras.filter(c => c.condicion === "Crédito").slice(-2).forEach(c => c.estado = "Pendiente");
+  D.compras.forEach(c => { c.pagos = c.estado === "Pagada" ? [{ fecha: c.condicion === "Crédito" ? addDays(c.fecha, 10) : c.fecha, monto: c.total, metodo: c.condicion === "Crédito" ? "Transferencia" : "Efectivo", usuario: "Carlos Peralta" }] : []; c.pagado = c.estado === "Pagada" ? c.total : 0; });
+  const cpar = D.compras.filter(c => c.estado === "Pendiente").slice(-1)[0];
+  if (cpar) { const mto = r2(cpar.total * .4); cpar.pagos = [{ fecha: addDays(cpar.fecha, 3), monto: mto, metodo: "Transferencia", referencia: "TRF-55821", usuario: "Carlos Peralta" }]; cpar.pagado = mto; }
   // Formas de pago en los gastos
   D.gastos.forEach((g, i) => g.metodo = i % 3 === 0 ? "Efectivo" : "Transferencia");
   const mes = ym(t), prev = ym(addDays(mes + "-01", -2));
@@ -989,6 +994,10 @@ const ventasOK = () => store.all("ventas").filter(v => v.estado !== "Anulada");
 const comprasOK = () => store.all("compras").filter(v => v.estado !== "Anulada");
 const costoVenta = v => r2(v.lineas.reduce((a, l) => a + l.cant * (l.costo || 0), 0));
 const saldo = v => r2(v.total - (v.pagado || 0) - (v.creditos || 0));
+/* Pagos a proveedores: las compras viejas marcadas "Pagada" sin detalle cuentan como un pago total */
+const pagosCompra = c => c.pagos || (c.estado === "Pagada" ? [{ fecha: c.pagadaEl || c.fecha, monto: c.total, metodo: c.metodo || "Transferencia" }] : []);
+const pagadoCompra = c => r2(pagosCompra(c).reduce((a, x) => a + (+x.monto || 0), 0));
+const saldoCompra = c => c.estado === "Anulada" ? 0 : Math.max(0, r2(c.total - pagadoCompra(c)));
 const inRange = (d, a, b) => (!a || d >= a) && (!b || d <= b);
 function heat(p) {
   const r = p.minimo > 0 ? p.stock / p.minimo : (p.stock > 0 ? 5 : 0);
@@ -1306,7 +1315,7 @@ function render() {
 }
 
 /* ---------------- Login ---------------- */
-const APP_VERSION = "2026.11.13-5";
+const APP_VERSION = "2026.11.13-6";
 const VENDOR = { nombre: "SP BJ SOFTWARE", instagram: "@bjsoftware", telefono: "849-473-3173" };
 /* Logo de BJ Software: hexágono con cubo */
 const bjHex = (size = 40) => `<svg viewBox="0 0 64 64" width="${size}" height="${size}" role="img" aria-label="BJ Software"><polygon points="32,5 55.4,18.5 55.4,45.5 32,59 8.6,45.5 8.6,18.5" fill="none" stroke="#F28C1B" stroke-width="5" stroke-linejoin="round"/><polygon points="32,19 43.5,25.5 32,32 20.5,25.5" fill="#FFB65C"/><polygon points="20.5,25.5 32,32 32,45 20.5,38.5" fill="#F59B2E"/><polygon points="43.5,25.5 32,32 32,45 43.5,38.5" fill="#DB720C"/></svg>`;
@@ -1870,6 +1879,7 @@ async function saveDoc(kind, d, { editing, fromCot }) {
       toast(`Factura #${v.num} emitida`); go("ventas"); setTimeout(() => ventaDetail(v, true), 60);
     } else if (kind === "compra") {
       const c = { ...d, usuario: S.user.nombre, estado: d.condicion === "Contado" ? "Pagada" : "Pendiente" };
+      c.pagos = d.condicion === "Contado" ? [{ fecha: c.fecha, monto: c.total, metodo: d.metodo || "Efectivo", usuario: S.user.nombre }] : []; c.pagado = d.condicion === "Contado" ? c.total : 0;
       delete c.moneda; delete c.tasa; delete c.tipo; delete c.emb; if (c.condicion === "Crédito") delete c.metodo;
       await moverStock(c.lineas.map(l => ({ id: l.productoId, delta: l.cant, costo: l.precio })));
       c.num = await nextNum("compras", 501);
@@ -1911,7 +1921,7 @@ function docList(o) {
       $("[data-out]", el).innerHTML = list.length ? `<div class="tbl-wrap"><table class="t cards"><thead><tr><th>No.</th><th>${partyCol === "clientes" ? "Cliente" : "Proveedor"}</th><th>Fecha</th>${o.col !== "compras" ? "<th>Tipo</th>" : "<th>Comprobante</th>"}<th>Usuario</th><th class="r">Total</th><th>Estado</th><th></th></tr></thead><tbody>
       ${pg.slice(list).map(d => `<tr class="click" data-id="${d.id}"><td data-l="No."><b>#${d.num}</b></td><td class="full" data-l="${partyCol === "clientes" ? "Cliente" : "Proveedor"}"><b>${esc((partyCol === "clientes" ? cliente : proveedor)(d[key]).nombre)}</b></td><td data-l="Fecha">${fdate(d.fecha)}</td>
         ${o.col !== "compras" ? `<td data-l="Tipo" class="hide-m">${d.tipo === "Exportación" ? `<span class="chip info plain">Exportación · US$</span>` : `<span class="chip plain">Local</span>`}</td>` : `<td data-l="Comprobante" class="hide-m">${esc(d.documento || "—")}</td>`}
-        <td data-l="Usuario" class="hide-m">${esc(d.usuario || "")}</td><td class="n" data-l="Total"><b>${money(d.total, d.moneda || "DOP")}</b>${o.col === "ventas" && d.estado === "Pendiente" && d.pagado ? `<br><small class="muted">Saldo ${money(saldo(d), d.moneda)}</small>` : ""}</td>
+        <td data-l="Usuario" class="hide-m">${esc(d.usuario || "")}</td><td class="n" data-l="Total"><b>${money(d.total, d.moneda || "DOP")}</b>${o.col === "ventas" && d.estado === "Pendiente" && d.pagado ? `<br><small class="muted">Saldo ${money(saldo(d), d.moneda)}</small>` : o.col === "compras" && d.estado === "Pendiente" && pagadoCompra(d) ? `<br><small class="muted">Saldo ${money(saldoCompra(d))}</small>` : ""}</td>
         <td data-l="Estado">${estadoChip(o.col === "ventas" && d.estado === "Pendiente" && d.vence && d.vence < today() ? "Vencida" : d.estado)}</td>
         <td class="row-acts-cell"><div class="row-acts"><button class="btn sm icon" data-print="${d.id}" title="Imprimir" aria-label="Imprimir">${ic("i-print")}</button></div></td></tr>`).join("")}</tbody></table></div>
         ${pg.html(list.length)}`
@@ -1996,12 +2006,14 @@ function abonoForm(v) {
   };
 }
 function compraDetail(c) {
-  const p = proveedor(c.proveedorId);
+  const p = proveedor(c.proveedorId); const pagos = pagosCompra(c); const sal = saldoCompra(c);
   const m = modal({ title: "Compra #" + c.num, size: "wide", body: `<div style="display:flex;gap:8px;margin-bottom:12px">${estadoChip(c.estado)}<span class="chip plain">${esc(c.condicion)}${c.metodo ? " · " + esc(c.metodo) : ""}</span></div>
-    <dl class="dl"><dt>Proveedor</dt><dd>${esc(p.nombre)}</dd><dt>Fecha</dt><dd>${fdate(c.fecha)}</dd><dt>Comprobante</dt><dd>${esc(c.documento || "—")}</dd><dt>Registró</dt><dd>${esc(c.usuario)}</dd>${c.notas ? `<dt>Notas</dt><dd style="font-weight:400">${esc(c.notas)}</dd>` : ""}</dl>${linesTable(c)}`,
-    foot: `${can("anular") && c.estado !== "Anulada" ? `<button class="btn danger" data-anular style="margin-right:auto">Anular</button>` : ""}${c.estado === "Pendiente" && can("pagos") ? `<button class="btn pri" data-pagar>${ic("i-cash")}Marcar pagada</button>` : ""}<button class="btn" data-print>${ic("i-print")}Imprimir</button>` });
+    <dl class="dl"><dt>Proveedor</dt><dd>${esc(p.nombre)}</dd><dt>Fecha</dt><dd>${fdate(c.fecha)}</dd><dt>Comprobante</dt><dd>${esc(c.documento || "—")}</dd><dt>Registró</dt><dd>${esc(c.usuario)}</dd>${c.notas ? `<dt>Notas</dt><dd style="font-weight:400">${esc(c.notas)}</dd>` : ""}</dl>${linesTable(c)}
+    ${c.estado !== "Anulada" ? `<h3 style="margin:18px 0 8px">Pagos al proveedor</h3>${pagos.length ? `<div class="tbl-wrap"><table class="t"><tbody>${pagos.map(x => `<tr><td>${fdate(x.fecha)}</td><td>${esc(x.metodo)}${x.referencia ? ` · <span class="muted">${esc(x.referencia)}</span>` : ""}</td><td class="muted">${esc(x.usuario || "")}</td><td class="n"><b>${money(x.monto)}</b></td></tr>`).join("")}</tbody></table></div>` : `<p class="muted small" style="margin:0">Sin pagos registrados.</p>`}
+    <p style="text-align:right;margin:8px 0 0">Pagado: <b>${money(pagadoCompra(c))}</b> · Saldo pendiente: <b class="${sal > 0 ? "down" : "up"}">${money(sal)}</b></p>` : ""}`,
+    foot: `${can("anular") && c.estado !== "Anulada" ? `<button class="btn danger" data-anular style="margin-right:auto">Anular</button>` : ""}${c.estado !== "Anulada" && sal > 0 && can("pagos") ? `<button class="btn pri" data-pagar>${ic("i-cash")}Registrar pago</button>` : ""}<button class="btn" data-print>${ic("i-print")}Imprimir</button>` });
   m.$("[data-print]").onclick = () => printDoc("compra", c);
-  m.$("[data-pagar]")?.addEventListener("click", () => { c.estado = "Pagada"; c.pagadaEl = today(); store.put("compras", c); audit("Pagó", "Compras", `Compra #${c.num}`); m.close(); route(); toast("Compra marcada como pagada"); });
+  m.$("[data-pagar]")?.addEventListener("click", () => { m.close(); pagoCompraForm(c); });
   m.$("[data-anular]")?.addEventListener("click", async () => {
     const lotUsado = feat("lotes") && c.lineas.some(l => { const lt = store.get("lotes", l.loteId); return lt && lt.disponible < lt.cantidad - 1e-9; });
     if (lotUsado) return toast("No se puede anular: parte de sus lotes ya se vendió. Haz un ajuste de inventario.", "err");
@@ -2010,6 +2022,24 @@ function compraDetail(c) {
     c.lineas.forEach(l => { const lt = store.get("lotes", l.loteId); if (lt) { lt.disponible = 0; lt.anulado = true; store.put("lotes", lt, true); } }); store.save();
     c.estado = "Anulada"; store.put("compras", c); audit("Anuló", "Compras", `Compra #${c.num}`); m.close(); route(); toast("Compra anulada");
   });
+}
+
+function pagoCompraForm(c) {
+  const sal = saldoCompra(c);
+  const m = modal({ title: "Registrar pago · Compra #" + c.num, size: "narrow", body: `<form class="grid" data-f><p class="muted" style="margin:0">${esc(proveedor(c.proveedorId).nombre)} · Total ${money(c.total)} · Saldo pendiente: <b>${money(sal)}</b></p>
+    <label class="field"><span>Monto (RD$)</span><input class="input" type="number" step="0.01" min="0" name="monto" value="${sal}"></label>
+    <label class="field"><span>Método</span><select class="input" name="metodo">${["Transferencia", "Efectivo", "Cheque", "Tarjeta"].map(x => `<option>${x}</option>`).join("")}</select></label>
+    <label class="field"><span>Referencia (opcional)</span><input class="input" name="referencia" placeholder="No. de transferencia o cheque"></label>
+    <label class="field"><span>Fecha</span><input class="input" type="date" name="fecha" value="${today()}"></label></form>`, foot: `<button class="btn" data-close>Cancelar</button><button class="btn pri" data-save>Registrar pago</button>` });
+  m.$("[data-save]").onclick = () => {
+    const d = formData(m.$("[data-f]")); if (!(d.monto > 0)) return toast("Escribe un monto mayor que cero.", "err");
+    if (d.monto > saldoCompra(c) + .01) return toast("El monto supera el saldo pendiente.", "err");
+    d.usuario = S.user.nombre; if (!d.referencia) delete d.referencia;
+    c.pagos = [...pagosCompra(c), d]; c.pagado = pagadoCompra(c);
+    if (saldoCompra(c) <= .01) { c.estado = "Pagada"; c.pagadaEl = d.fecha; }
+    store.put("compras", c); audit("Pagó", "Compras", `${money(d.monto)} en ${d.metodo} a la compra #${c.num}${c.estado === "Pagada" ? " (saldada)" : ` · saldo ${money(saldoCompra(c))}`}`);
+    m.close(); route(); toast(c.estado === "Pagada" ? "Compra saldada" : "Pago registrado · saldo " + money(saldoCompra(c)));
+  };
 }
 
 /* ---------------- Notas de crédito ---------------- */
@@ -2316,7 +2346,7 @@ VIEWS.caja = el => {
     store.all("ventas").filter(v => v.estado !== "Anulada").forEach(v => (v.abonos || []).filter(a => a.fecha === dia).forEach(a => movs.push({ tipo: "Ingreso", doc: "Factura #" + v.num, quien: cliente(v.clienteId).nombre, metodo: a.metodo || "Efectivo", moneda: v.moneda || "DOP", monto: a.monto, dop: v.moneda === "USD" ? r2(a.monto * v.tasa) : a.monto, usuario: a.usuario || v.usuario })));
     store.all("notas").filter(n => n.estado !== "Anulada" && n.fecha === dia && n.reembolso > 0).forEach(n => movs.push({ tipo: "Egreso", doc: "Reembolso NC #" + n.num, quien: cliente(n.clienteId).nombre, metodo: n.metodo, moneda: n.moneda, monto: n.reembolso, dop: n.moneda === "USD" ? r2(n.reembolso * n.tasa) : n.reembolso, usuario: n.usuario }));
     store.all("gastos").filter(g => g.fecha === dia).forEach(g => movs.push({ tipo: "Egreso", doc: "Gasto: " + (g.descripcion || g.categoria), quien: g.categoria, metodo: g.metodo || "Efectivo", moneda: "DOP", monto: g.monto, dop: g.monto, usuario: g.usuario }));
-    store.all("compras").filter(c => c.estado !== "Anulada" && c.fecha === dia && c.condicion === "Contado").forEach(c => movs.push({ tipo: "Egreso", doc: "Compra #" + c.num, quien: proveedor(c.proveedorId).nombre, metodo: c.metodo || "Efectivo", moneda: "DOP", monto: c.total, dop: c.total, usuario: c.usuario }));
+    store.all("compras").filter(c => c.estado !== "Anulada").forEach(c => pagosCompra(c).filter(x => x.fecha === dia).forEach(x => movs.push({ tipo: "Egreso", doc: "Pago compra #" + c.num, quien: proveedor(c.proveedorId).nombre, metodo: x.metodo || "Efectivo", moneda: "DOP", monto: x.monto, dop: x.monto, usuario: x.usuario || c.usuario })));
     const cierre = store.all("cajas").find(x => x.fecha === dia);
     const by = (tipo, met) => r2(movs.filter(m => m.tipo === tipo && m.metodo === met && m.moneda === "DOP").reduce((a, m) => a + m.monto, 0));
     const usd = (tipo, met) => r2(movs.filter(m => m.tipo === tipo && m.metodo === met && m.moneda === "USD").reduce((a, m) => a + m.monto, 0));
@@ -2422,6 +2452,11 @@ const esLocal = c => !c?.pais || norm(c.pais).includes("dominicana");
 const idDGII = c => esLocal(c) ? soloDig(c?.rnc) : "";
 const ymd = s => (s || "").replace(/-/g, "");
 const n2 = n => (Math.round((+n || 0) * 100) / 100).toFixed(2);
+function fp606(c) {
+  const P = pagosCompra(c); if (!P.length) return "04";
+  const cod = x => ({ Efectivo: "01", Tarjeta: "03" }[x.metodo] || "02"); const cods = [...new Set(P.map(cod))];
+  return saldoCompra(c) > .01 || cods.length > 1 ? "07" : cods[0];
+}
 function dgiiData(tipo, mes) {
   const T = store.config.tasa;
   if (tipo === "607") {
@@ -2438,7 +2473,7 @@ function dgiiData(tipo, mes) {
     return { rows, sin, line, header: `607|${soloDig(store.config.rnc)}|${mes.replace("-", "")}|${rows.length}` };
   }
   const rows = [];
-  store.all("compras").filter(c => c.estado !== "Anulada" && ym(c.fecha) === mes && c.documento).forEach(c => { const pv = proveedor(c.proveedorId); rows.push({ rnc: soloDig(pv.rnc), tid: tipoId(pv.rnc), tb: pv.tipo606 || "09", ncf: c.documento, mod: "", fecha: ymd(c.fecha), pago: c.estado === "Pagada" ? ymd(c.pagadaEl || c.fecha) : "", serv: 0, bienes: r2(c.subtotal), total: r2(c.subtotal), itbis: r2(c.itbis || 0), fp: c.condicion === "Crédito" ? "04" : ({ Efectivo: "01", Tarjeta: "03" }[c.metodo] || "02"), prov: pv.nombre, doc: "Compra #" + c.num }); });
+  store.all("compras").filter(c => c.estado !== "Anulada" && ym(c.fecha) === mes && c.documento).forEach(c => { const pv = proveedor(c.proveedorId); rows.push({ rnc: soloDig(pv.rnc), tid: tipoId(pv.rnc), tb: pv.tipo606 || "09", ncf: c.documento, mod: "", fecha: ymd(c.fecha), pago: saldoCompra(c) <= .01 ? ymd(pagosCompra(c).map(x => x.fecha).sort().pop() || c.fecha) : "", serv: 0, bienes: r2(c.subtotal), total: r2(c.subtotal), itbis: r2(c.itbis || 0), fp: fp606(c), prov: pv.nombre, doc: "Compra #" + c.num }); });
   store.all("gastos").filter(g => ym(g.fecha) === mes && g.ncf).forEach(g => { const itb = +g.itbis || 0; const base = r2(g.monto - itb); rows.push({ rnc: soloDig(g.rnc), tid: tipoId(g.rnc), tb: g.tipo606 || "02", ncf: g.ncf, mod: "", fecha: ymd(g.fecha), pago: ymd(g.fecha), serv: base, bienes: 0, total: base, itbis: r2(itb), fp: ({ Efectivo: "01", Tarjeta: "03" }[g.metodo] || "02"), prov: g.descripcion || g.categoria, doc: "Gasto" }); });
   const line = r => [r.rnc, r.tid, r.tb, r.ncf, r.mod, r.fecha, r.pago, n2(r.serv), n2(r.bienes), n2(r.total), n2(r.itbis), n2(0), n2(0), n2(0), n2(r.itbis), n2(0), "", n2(0), n2(0), n2(0), n2(0), n2(0), r.fp].join("|");
   return { rows, sin: store.all("compras").filter(c => c.estado !== "Anulada" && ym(c.fecha) === mes && !c.documento).length, line, header: `606|${soloDig(store.config.rnc)}|${mes.replace("-", "")}|${rows.length}` };
@@ -2489,13 +2524,14 @@ function buildReport(tab, f) {
     R.foot = ["Total", "", "", "", "", money(P.reduce((a, v) => a + sd(v), 0)), ""];
     R.csv = [["Factura", "Cliente", "Fecha", "Vence", "Días vencida", "Moneda", "Saldo", "Saldo RD$"], ...P.map(v => [v.num, cliente(v.clienteId).nombre, v.fecha, v.vence, Math.max(0, dias(v)), v.moneda, saldo(v), r2(sd(v))])];
   } else if (tab === "cxp") {
-    const P = comprasOK().filter(c => c.estado === "Pendiente").sort((a, b) => a.fecha.localeCompare(b.fecha));
-    R.period = "Al " + fdate(t); R.note = "Compras a crédito pendientes de pago.";
-    R.kpis = [["Total por pagar", money(P.reduce((a, c) => a + c.total, 0)), P.length + " compras"], ["Proveedores", String(new Set(P.map(c => c.proveedorId)).size)]];
-    R.cols = [{ h: "Compra" }, { h: "Proveedor" }, { h: "Fecha" }, { h: "Comprobante" }, { h: "Total", r: 1 }, { h: "", screen: 1 }];
-    R.rows = P.map(c => ["#" + c.num, proveedor(c.proveedorId).nombre, fdate(c.fecha), c.documento || "—", money(c.total), { t: "", h: `<button class="btn sm" data-ver="${c.id}">Ver</button>` }]);
-    R.foot = ["Total", "", "", "", money(P.reduce((a, c) => a + c.total, 0)), ""];
-    R.csv = [["Compra", "Proveedor", "Fecha", "Comprobante", "Total"], ...P.map(c => [c.num, proveedor(c.proveedorId).nombre, c.fecha, c.documento, c.total])];
+    const P = comprasOK().filter(c => saldoCompra(c) > .01).sort((a, b) => a.fecha.localeCompare(b.fecha));
+    const dias = c => Math.floor((new Date(t) - new Date(c.fecha)) / 864e5); const tot = P.reduce((a, c) => a + saldoCompra(c), 0);
+    R.period = "Al " + fdate(t); R.note = "Compras a crédito con saldo pendiente, incluidas las que tienen pagos parciales.";
+    R.kpis = [["Total por pagar", money(tot), P.length + " compras"], ["Con pagos parciales", String(P.filter(c => pagadoCompra(c) > 0).length)], ["Proveedores", String(new Set(P.map(c => c.proveedorId)).size)], ["Más de 30 días", money(P.filter(c => dias(c) > 30).reduce((a, c) => a + saldoCompra(c), 0))]];
+    R.cols = [{ h: "Compra" }, { h: "Proveedor" }, { h: "Fecha" }, { h: "Comprobante" }, { h: "Días", r: 1 }, { h: "Total", r: 1 }, { h: "Pagado", r: 1 }, { h: "Saldo", r: 1 }, { h: "", screen: 1 }];
+    R.rows = P.map(c => ["#" + c.num, proveedor(c.proveedorId).nombre, fdate(c.fecha), c.documento || "—", String(dias(c)), money(c.total), money(pagadoCompra(c)), { t: money(saldoCompra(c)), h: `<b>${money(saldoCompra(c))}</b>` }, { t: "", h: `<span style="display:flex;gap:4px;justify-content:flex-end">${can("pagos") ? `<button class="btn sm" data-pagarc="${c.id}">Registrar pago</button>` : ""}<button class="btn sm ghost" data-ver="${c.id}">Ver</button></span>` }]);
+    R.foot = ["Total", "", "", "", "", money(P.reduce((a, c) => a + c.total, 0)), money(P.reduce((a, c) => a + pagadoCompra(c), 0)), money(tot), ""];
+    R.csv = [["Compra", "Proveedor", "Fecha", "Comprobante", "Días", "Total", "Pagado", "Saldo"], ...P.map(c => [c.num, proveedor(c.proveedorId).nombre, c.fecha, c.documento, dias(c), c.total, pagadoCompra(c), saldoCompra(c)])];
   } else if (tab === "inventario") {
     const P = store.all("productos").slice().sort((a, b) => b.stock * b.costo - a.stock * a.costo);
     const vc = P.reduce((a, p) => a + Math.max(0, p.stock) * p.costo, 0), vv = P.reduce((a, p) => a + Math.max(0, p.stock) * p.precio, 0);
@@ -2632,6 +2668,7 @@ VIEWS.reportes = el => {
     $("[data-mes]", out)?.addEventListener("change", e => { if (e.target.value) { f.mes = e.target.value; pg.reset(); draw(); } });
     $("[data-txt]", out)?.addEventListener("click", () => { downloadText(`DGII_F_${f.dgii}_${soloDig(store.config.rnc)}_${f.mes.replace("-", "")}.txt`, R.txt, "text/plain"); audit("Generó", "Reportes", `Formato ${f.dgii} de ${f.mes}`); });
     $$("[data-ver]", out).forEach(b => b.onclick = () => compraDetail(store.get("compras", b.dataset.ver)));
+    $$("[data-pagarc]", out).forEach(b => b.onclick = () => pagoCompraForm(store.get("compras", b.dataset.pagarc)));
   };
   pg.bind(out, draw);
   $$("[data-f]", el).forEach(i => i.onchange = () => { f[i.dataset.f] = i.value; pg.reset(); draw(); });
