@@ -12,7 +12,7 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2310291D'/%3E%3Cpath d='M22 24c-6 10-4 26 8 30 8 3 16-2 14-8-2-5-8-6-10-12-1-4 0-8-2-10-3-3-7-3-10 0z' fill='%23E5332A'/%3E%3Cpath d='M30 22c0-6 4-10 10-11' stroke='%233FB37A' stroke-width='4' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Figtree:wght@400;500;600;700&family=Playfair+Display:wght@600&display=swap" rel="stylesheet">
 <style>
 :root{
   --bg:#F3F6F1; --surface:#FFFFFF; --surface-2:#EDF2EA; --surface-3:#E3EBDF;
@@ -70,21 +70,44 @@ h3{font-size:1rem;font-weight:700}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 
 /* ---------- Login ---------- */
-.login{min-height:100vh;min-height:100dvh;display:grid;grid-template-columns:1.1fr 1fr;background:var(--surface)}
-.login-art{background:var(--side);color:#fff;padding:48px clamp(28px,5vw,64px);display:flex;flex-direction:column;justify-content:space-between;position:relative;overflow:hidden}
-.login-art .word{font-family:var(--display);font-weight:800;font-size:clamp(4.5rem,11vw,9.5rem);line-height:.86;letter-spacing:-.045em;color:#F4F1E8;position:relative;z-index:1}
+#root{height:100%}
+.login{height:100%;display:grid;grid-template-columns:1.1fr 1fr;background:var(--surface);overflow:hidden}
+.login-art{background:var(--side);color:#fff;padding:clamp(22px,4.5vh,44px) clamp(28px,5vw,64px);display:flex;flex-direction:column;justify-content:space-between;gap:16px;position:relative;overflow:hidden;min-height:0}
+.login-art .lg-top{display:flex;align-items:center;gap:12px;position:relative;z-index:1}
+.login-art .lg-top b{font-family:var(--display);font-size:1.08rem;color:#fff;letter-spacing:.03em;display:block;line-height:1.1}
+.login-art .lg-top small{color:var(--side-muted);font-size:.78rem}
+.login-art .mid{display:flex;flex-direction:column;gap:clamp(14px,3vh,28px);position:relative;z-index:1}
+.login-art .word{font-family:var(--display);font-weight:800;font-size:clamp(3.2rem,min(10vw,14vh),8.6rem);line-height:.86;letter-spacing:-.045em;color:#F4F1E8}
 .login-art .word span{display:block;color:var(--chili)}
 .login-art .word span:last-child{color:#5CC690}
-.login-art p{max-width:34ch;color:#B9CFC1;position:relative;z-index:1}
-.login-art .pep{position:absolute;right:-60px;bottom:-40px;width:min(42vw,460px);height:auto;opacity:.95;transform:rotate(-18deg)}
-.login-form{display:flex;align-items:center;justify-content:center;padding:40px 24px}
-.login-form form{width:min(380px,100%);display:grid;gap:16px}
-.demo-users{display:grid;gap:8px;margin-top:6px}
-.demo-users button{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 14px;border:1px dashed var(--line-2);border-radius:var(--r);background:var(--surface-2);cursor:pointer;text-align:left}
+.login-art .pep{position:absolute;right:-50px;bottom:-40px;width:min(34vw,380px);height:auto;opacity:.9;transform:rotate(-18deg)}
+.pep-dot{display:inline-block;width:.34em;height:.68em;margin-left:.1em;vertical-align:-.02em;transform:rotate(-14deg);transform-origin:50% 90%}
+.pep-dot svg{width:100%;height:100%;display:block}
+.client-logo{display:flex;justify-content:center;margin-bottom:2px}
+.client-logo svg,.client-logo img{width:clamp(70px,13vh,104px);height:auto;max-height:clamp(100px,19vh,150px);object-fit:contain}
+.login-form{display:flex;align-items:center;justify-content:center;padding:clamp(18px,3vh,36px) 24px;overflow-y:auto;min-height:0}
+.login-form form{width:min(400px,100%);display:grid;gap:12px}
+.demo-users{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:6px}
+.demo-users button{display:grid;gap:2px;padding:9px 10px;border:1px dashed var(--line-2);border-radius:var(--r);background:var(--surface-2);cursor:pointer;text-align:left;min-width:0}
+.demo-users button b{font-size:.84rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.demo-users button small{font-size:.72rem;color:var(--muted)}
 .demo-users button:hover{border-color:var(--brand)}
-.credit{font-size:.78rem;color:var(--muted);text-align:center}
-@media (max-width:820px){.login{grid-template-columns:1fr}.login-art{min-height:250px;padding:28px 24px}.login-art .word{font-size:4.2rem}.login-art{justify-content:flex-start;gap:22px}.login-art .pep{display:none}.login-art p{display:none}}
-
+.credit{display:grid;justify-items:center;gap:4px;font-size:.76rem;color:var(--muted);text-align:center;margin-top:6px}
+.bjword{display:inline-flex;align-items:center;gap:7px;font-size:1.3rem;line-height:1}
+.bjword .bj{font-family:var(--display);font-weight:800;color:#F28C1B;letter-spacing:-.02em}
+.bjword .sw{font-family:Georgia,"Times New Roman",serif;color:var(--ink);display:inline-flex;align-items:center}
+.bjword .sw svg{width:.78em;height:.78em;margin:0 .02em;color:var(--ink)}
+@media (max-width:820px){
+  .login{grid-template-columns:1fr;height:auto;min-height:100%;overflow:visible}
+  .login-art{padding:20px 20px 22px;gap:14px}
+  .login-art .word{font-size:clamp(2rem,9vw,2.6rem);line-height:1}
+  .login-art .word span{display:inline}
+  .login-art .pep{display:none}
+  .login-art .lg-top small{display:none}
+  .client-logo svg,.client-logo img{width:62px;max-height:92px}
+  .login-form form{gap:10px}
+  .login-form{padding:16px 18px 20px;overflow:visible;align-items:flex-start}
+}
 /* ---------- Shell ---------- */
 .app{display:grid;grid-template-columns:262px 1fr;min-height:100vh;min-height:100dvh}
 .side{background:var(--side);color:var(--side-ink);position:sticky;top:0;height:100vh;height:100dvh;display:flex;flex-direction:column;overflow:hidden;z-index:30}
@@ -452,7 +475,7 @@ table.t td.n{text-align:right;white-space:nowrap}
 <div id="print"></div>
 <div class="toasts" id="toasts" role="status" aria-live="polite"></div>
 
-<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+<svg width="0" height="0" style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true">
 <defs>
 <symbol id="i-home" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M10 21v-6h4v6"/></symbol>
 <symbol id="i-receipt" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h14v18l-3-2-2 2-2-2-2 2-2-2-3 2z"/><path d="M9 8h6M9 12h6M9 16h4"/></symbol>
@@ -916,7 +939,7 @@ const TITLES = { dashboard: "Panel", ventas: "Ventas y facturas", "venta-nueva":
 const VIEWS = {};
 function go(v, ctx) { S.pendingCtx = ctx || null; if (location.hash !== "#" + v) { S.skipHash = true; location.hash = v; } route(); }
 
-function brandMark() { const c = store.config; return c.logo ? `<img src="${c.logo}" alt="">` : `<svg viewBox="0 0 64 64" width="40" height="40"><path d="M22 24c-6 10-4 26 8 30 8 3 16-2 14-8-2-5-8-6-10-12-1-4 0-8-2-10-3-3-7-3-10 0z" fill="#E5332A"/><path d="M30 22c0-6 4-10 10-11" stroke="#3FB37A" stroke-width="4" fill="none" stroke-linecap="round"/></svg>`; }
+function brandMark() { const c = store.config; return c.logo ? `<img src="${c.logo}" alt="">` : `<span style="width:100%;height:100%;background:#fff;display:grid;place-items:center">${kplLogo(false).replace("<svg ", '<svg style="width:84%;height:84%" ')}</span>`; }
 function shellHTML() {
   const navHTML = NAV.map(g => { const items = g.items.filter(([v]) => can(v)); if (!items.length) return ""; return (g.g ? `<div class="grp">${g.g}</div>` : "") + items.map(([v, t, i]) => `<a href="#${v}" data-nav="${v}">${ic(i)}<span>${t}</span>${v === "productos" ? `<span class="count" data-low></span>` : v === "ordenes" ? `<span class="count" data-late></span>` : ""}</a>`).join(""); }).join("");
   const fab = can("venta-nueva") ? ["venta-nueva", "Facturar"] : ["compra-nueva", "Comprar"];
@@ -971,28 +994,45 @@ function render() {
 }
 
 /* ---------------- Login ---------------- */
+const APP_VERSION = "2026.11.13-1";
 const VENDOR = { nombre: "SP BJ SOFTWARE", instagram: "@bjsoftware", telefono: "849-473-3173" };
-const bjMark = (size = 40) => `<svg viewBox="0 0 64 64" width="${size}" height="${size}" role="img" aria-label="BJ Software"><rect width="64" height="64" rx="14" fill="#F4F1E8"/><text x="31" y="43" text-anchor="middle" font-family="Bricolage Grotesque, Figtree, sans-serif" font-weight="800" font-size="30" letter-spacing="-1.5" fill="#10291D">BJ</text><circle cx="51" cy="40" r="4" fill="#E5332A"/></svg>`;
+/* Logo de BJ Software: hexágono con cubo */
+const bjHex = (size = 40) => `<svg viewBox="0 0 64 64" width="${size}" height="${size}" role="img" aria-label="BJ Software"><polygon points="32,5 55.4,18.5 55.4,45.5 32,59 8.6,45.5 8.6,18.5" fill="none" stroke="#F28C1B" stroke-width="5" stroke-linejoin="round"/><polygon points="32,19 43.5,25.5 32,32 20.5,25.5" fill="#FFB65C"/><polygon points="20.5,25.5 32,32 32,45 20.5,38.5" fill="#F59B2E"/><polygon points="43.5,25.5 32,32 32,45 43.5,38.5" fill="#DB720C"/></svg>`;
+const gear = `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="4" stroke-dasharray="3.34 3.34"/><circle cx="12" cy="12" r="7" fill="currentColor"/><circle cx="12" cy="12" r="2.6" style="fill:var(--surface)"/></svg>`;
+const bjWordmark = () => `<span class="bjword">${bjHex(30)}<span><span class="bj">BJ</span> <span class="sw">S${gear}ftware</span></span></span>`;
+/* Logo del cliente KPL AGRO (recreado en SVG) */
+function kplLogo(withText = true) {
+  const k = uid(), G = "#1E5B2E", L = "#7DAA3E", Y = "#E2B33C";
+  const pet = "M0,-64 C10,-52 21,-40 21,-27 A21,21 0 0 1 -21,-27 C-21,-40 -10,-52 0,-64Z";
+  const field = (cx, dir) => `<circle cx="${cx}" cy="-5" r="8" fill="${Y}"/><path d="M${cx - 22},4 Q${cx},-8 ${cx + 22},4 L${cx + 22},30 L${cx - 22},30Z" fill="#fff"/><path d="M${cx - 22},4 Q${cx},-8 ${cx + 22},4" stroke="${L}" stroke-width="3.5" fill="none"/><path d="M${cx - 22},11 Q${cx},1 ${cx + 22},11" stroke="${L}" stroke-width="3.5" fill="none"/><path d="M${cx - 20},18 Q${cx},10 ${cx + 20},18" stroke="${L}" stroke-width="3" fill="none" opacity=".7"/>`;
+  const arts = [
+    `<path d="M0,-8 V-52" stroke="${L}" stroke-width="2.4" stroke-linecap="round"/>${[-46, -38, -30].map((y, i) => `<ellipse cx="-4.5" cy="${y}" rx="3" ry="6.5" transform="rotate(-32 -4.5 ${y})" fill="${i ? L : Y}"/><ellipse cx="4.5" cy="${y}" rx="3" ry="6.5" transform="rotate(32 4.5 ${y})" fill="${i ? L : Y}"/>`).join("")}<ellipse cx="0" cy="-53" rx="2.6" ry="5.5" fill="${Y}"/>`,
+    field(28), `<path d="M-15,21 L0,12 L15,21Z" fill="${L}"/><rect x="-14" y="21" width="28" height="3" fill="${G}"/>${[-11, -6, -1, 4, 9].map(x => `<rect x="${x}" y="25" width="2.6" height="12" fill="${L}"/>`).join("")}<rect x="-15" y="37" width="30" height="3" fill="${G}"/>`,
+    field(-28)
+  ];
+  const petals = [0, 90, 180, 270].map((r, i) => `<clipPath id="kp${k}${i}"><path d="${pet}" transform="rotate(${r})"/></clipPath><path d="${pet}" transform="rotate(${r})" fill="#fff"/><g clip-path="url(#kp${k}${i})">${arts[i]}</g><path d="${pet}" transform="rotate(${r})" fill="none" stroke="${G}" stroke-width="3" stroke-linejoin="round"/>`).join("");
+  return `<svg viewBox="-70 -70 140 ${withText ? 208 : 140}" role="img" aria-label="KPL AGRO" xmlns="http://www.w3.org/2000/svg">${petals}${withText ? `<text x="0" y="104" text-anchor="middle" font-family="'Playfair Display',Didot,'Bodoni 72',Georgia,serif" font-weight="600" font-size="48" letter-spacing="-1" fill="${G}">KPL</text><text x="16" y="126" text-anchor="middle" font-family="Figtree,system-ui,sans-serif" font-weight="700" font-size="14" letter-spacing="5" fill="${L}">AGRO</text>` : ""}</svg>`;
+}
 function loginHTML() {
   const demo = !cloud.on;
   document.title = VENDOR.nombre + " · Iniciar sesión";
   return `<div class="login">
   <section class="login-art">
-    <div style="display:flex;align-items:center;gap:12px;position:relative;z-index:1"><div class="brand" style="padding:0"><div class="mark" style="background:none">${bjMark(44)}</div><div><b style="letter-spacing:.02em">${VENDOR.nombre}</b><small>Sistema de ventas, inventario y exportación</small></div></div></div>
-    <div class="word" aria-hidden="true">Del<span>campo</span><span>al mundo.</span></div>
-    <p>Factura, cotiza, controla tu inventario y da seguimiento a cada pedido de exportación desde la oficina o desde el celular.</p>
+    <div class="lg-top">${bjHex(44)}<div><b>${VENDOR.nombre}</b><small>Sistema de ventas, inventario y exportación</small></div></div>
+    <div class="mid"><div class="word" aria-label="Del campo al mundo.">Del <span>campo</span> <span>al mundo.</span></div></div>
     <svg class="pep" viewBox="0 0 200 150" aria-hidden="true"><path d="M84 50c-18 16-22 52-2 76 18 21 58 16 70 2 8-9 2-18-10-23-16-7-24-17-28-34-3-12-4-22-14-25-7-2-11 0-16 4z" fill="#D4271F"/><path d="M100 44c0-12 6-20 18-24" stroke="#3FB37A" stroke-width="7" fill="none" stroke-linecap="round"/><path d="M80 52c8-8 24-8 30 2" stroke="#2F7A3E" stroke-width="10" fill="none" stroke-linecap="round"/><ellipse cx="94" cy="80" rx="6" ry="17" fill="#fff" opacity=".3" transform="rotate(-24 94 80)"/></svg>
   </section>
   <section class="login-form">
     <form id="loginForm" novalidate>
-      <div><h1 style="font-size:1.9rem">Iniciar sesión</h1><p class="muted" style="margin:6px 0 0">Usa el correo y la contraseña que te asignó el administrador.</p></div>
+      <div class="client-logo">${store.config.logo ? `<img src="${store.config.logo}" alt="${esc(store.config.empresa)}">` : kplLogo(true)}</div>
+      <div><h1 style="font-size:1.8rem">Iniciar sesión</h1><p class="muted" style="margin:4px 0 0">Ingresa tus credenciales para continuar.</p></div>
       <label class="field"><span>Correo</span><input class="input" name="email" type="email" autocomplete="username" required></label>
       <label class="field"><span>Contraseña</span><input class="input" name="pass" type="password" autocomplete="current-password" required></label>
       <p class="small" id="loginErr" style="color:var(--chili);margin:0;min-height:1.2em" role="alert"></p>
       <button class="btn pri" style="height:46px">Entrar</button>
-      ${demo ? `<div><p class="small muted" style="margin:8px 0 4px">Modo demostración. Entra con un usuario de prueba (contraseña demo123):</p><div class="demo-users">
-        ${store.all("usuarios").slice(0, 3).map(u => `<button type="button" data-demo="${esc(u.email)}"><span><b>${esc(u.nombre)}</b><br><small class="muted">${esc(u.email)}</small></span><span class="chip plain">${esc(u.rol)}</span></button>`).join("")}</div></div>` : ""}
-      <div class="credit" style="display:flex;align-items:center;justify-content:center;gap:10px">${bjMark(26)}<span><b style="color:var(--ink)">${VENDOR.nombre}</b><br>${VENDOR.instagram} · ${VENDOR.telefono}</span></div>
+      ${demo ? `<div><p class="small muted" style="margin:4px 0 2px">Modo demostración · contraseña demo123</p><div class="demo-users">
+        ${store.all("usuarios").slice(0, 3).map(u => `<button type="button" data-demo="${esc(u.email)}" title="${esc(u.email)}"><b>${esc(u.nombre)}</b><small>${esc(u.rol)}</small></button>`).join("")}</div></div>` : ""}
+      <div class="credit">${bjWordmark()}<span>${VENDOR.instagram} · © ${new Date().getFullYear()} BJ Software. Todos los derechos reservados.<br>Versión ${APP_VERSION}</span></div>
     </form>
   </section></div>`;
 }
@@ -1580,7 +1620,7 @@ function printDoc(kind, d) {
   const body = kind === "orden" ? `<table><thead><tr><th>Producto</th><th class="r">Cantidad</th><th>Listo</th></tr></thead><tbody>${d.lineas.map(l => `<tr><td>${esc(l.nombre)}</td><td class="r">${qty(l.cant)}</td><td>☐</td></tr>`).join("")}</tbody></table>`
     : `<table><thead><tr><th>Descripción</th><th class="r">Cant.</th><th class="r">Precio</th><th class="r">Total</th></tr></thead><tbody>${d.lineas.map(l => `<tr><td>${esc(l.nombre)} <span style="color:#666">· ${esc(l.unidad || "")}</span></td><td class="r">${qty(l.cant)}</td><td class="r">${money(l.precio, cur)}</td><td class="r">${money(l.cant * l.precio, cur)}</td></tr>`).join("")}</tbody></table>
       <div class="tot"><div><span>Subtotal</span><span>${money(d.subtotal, cur)}</span></div><div><span>${+d.itbisPct ? "ITBIS " + d.itbisPct + "%" : "Exento de ITBIS"}</span><span>${money(d.itbis, cur)}</span></div><div class="g"><span>Total</span><span>${money(d.total, cur)}</span></div>${cur === "USD" ? `<div style="font-size:9pt;color:#555"><span>Tasa ${d.tasa}</span><span>${money(d.total * d.tasa)}</span></div>` : ""}</div>`;
-  $("#print").innerHTML = `<div class="ph"><div>${c.logo ? `<img src="${c.logo}" alt=""><br>` : ""}<b style="font-size:14pt">${esc(c.empresa)}</b><br>RNC ${esc(c.rnc)}<br>${esc(c.direccion)}<br>${esc(c.telefono)} · ${esc(c.email)}</div>
+  $("#print").innerHTML = `<div class="ph"><div>${c.logo ? `<img src="${c.logo}" alt=""><br>` : `<div style="width:64px">${kplLogo(true)}</div>`}<b style="font-size:14pt">${esc(c.empresa)}</b><br>RNC ${esc(c.rnc)}<br>${esc(c.direccion)}<br>${esc(c.telefono)} · ${esc(c.email)}</div>
     <div style="text-align:right"><h1>${title}</h1><b>No. ${d.num}</b><br>Fecha: ${fdate(d.fecha)}${d.documento ? `<br>NCF: ${esc(d.documento)}` : ""}${kind === "cotizacion" ? `<br>Válida hasta: ${fdate(d.valida)}` : ""}${d.condicion === "Crédito" && d.vence ? `<br>Vence: ${fdate(d.vence)}` : ""}${kind === "orden" ? `<br>Entrega: ${fdate(d.entrega)}<br>Estado: ${esc(d.estado)}` : ""}</div></div>
     <div class="meta"><div><b>${isC ? "Proveedor" : "Cliente"}</b><br>${esc(party.nombre)}<br>${party.rnc ? "RNC/Tax ID: " + esc(party.rnc) + "<br>" : ""}${esc([party.ciudad, party.pais].filter(Boolean).join(", "))}<br>${esc(party.telefono || "")}</div>
     <div>${d.tipo ? `<b>Tipo:</b> ${esc(d.tipo)}<br>` : ""}${d.condicion ? `<b>Condición:</b> ${esc(d.condicion)}<br>` : ""}${kind === "orden" ? `<b>Trabajo:</b> ${esc(d.titulo)}<br><b>Responsable:</b> ${esc(d.responsable || "")}<br><b>Prioridad:</b> ${esc(d.prioridad)}<br>` : ""}<b>Atendido por:</b> ${esc(d.usuario || S.user.nombre)}</div></div>
