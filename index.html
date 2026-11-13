@@ -314,6 +314,10 @@ select.input.pg-size{height:32px;width:auto;padding:0 8px;font-size:.82rem;margi
 .line .input{height:38px;text-align:right;font-variant-numeric:tabular-nums}
 .line .tot{text-align:right;font-weight:700;font-variant-numeric:tabular-nums}
 .lf{display:block;min-width:0}.lf>span{display:none;font-size:.72rem;color:var(--muted);font-weight:600;margin-bottom:3px}
+.line-wrap{border-top:1px solid var(--line)}.line-wrap:first-child{border-top:0}.line-wrap .line{border-top:0}
+.lote-row{display:grid;grid-template-columns:1fr 180px;gap:10px;padding:0 46px 12px 54px}
+.lote-row .input{height:36px}
+.uvsel{height:28px!important;width:auto!important;padding:0 6px!important;font-size:.78rem;text-align:left!important;margin-top:2px}
 .line .warn-stock{color:var(--chili);font-weight:600}
 .lines-head{display:grid;grid-template-columns:44px minmax(0,1fr) 110px 130px 120px 36px;gap:10px;font-size:.76rem;color:var(--muted);font-weight:600;padding-bottom:6px}
 .lines-head span:nth-child(n+3){text-align:right}
@@ -329,6 +333,7 @@ select.input.pg-size{height:32px;width:auto;padding:0 8px;font-size:.82rem;margi
   .line .thumb{grid-area:img}.line .nm{grid-area:nm}.line .del{grid-area:del}
   .line .q{grid-area:q}.line .p{grid-area:p}.line .tot{grid-area:t}
   .lf>span{display:block!important}
+  .lote-row{padding:0 0 12px;grid-template-columns:1fr 1fr}
 }
 
 /* ---------- Picker ---------- */
@@ -398,6 +403,9 @@ select.input.pg-size{height:32px;width:auto;padding:0 8px;font-size:.82rem;margi
 .toasts{position:fixed;right:20px;bottom:calc(20px + env(safe-area-inset-bottom,0px));z-index:300;display:grid;gap:8px}
 .toast{background:var(--ink);color:var(--bg);padding:12px 16px;border-radius:12px;box-shadow:0 10px 30px -10px rgba(0,0,0,.5);font-weight:500;display:flex;gap:10px;align-items:center;animation:pop .2s;max-width:380px}
 .toast.err{background:var(--chili);color:#fff}
+.toast.warn{background:var(--sun);color:#1b1404;flex-wrap:wrap}
+.toast .t-acts{display:flex;gap:6px;width:100%;justify-content:flex-end}
+.toast .t-acts a{color:inherit;font-weight:700;padding:4px 10px;border-radius:8px;background:rgba(0,0,0,.12);text-decoration:none}
 .toast svg{width:18px;height:18px;flex:none}
 
 /* ---------- Misc ---------- */
@@ -592,12 +600,12 @@ function art(p, big) {
 const photo = (p, big) => p?.foto ? `<img src="${p.foto}" alt="${esc(p.nombre)}" loading="lazy">` : art(p, big);
 
 /* ---------------- Almacenamiento ---------------- */
-const COLS = ["productos", "clientes", "proveedores", "compras", "ventas", "cotizaciones", "ordenes", "gastos", "presupuestos", "ajustes", "usuarios", "roles"];
+const COLS = ["productos", "clientes", "proveedores", "compras", "ventas", "cotizaciones", "ordenes", "gastos", "presupuestos", "ajustes", "usuarios", "roles", "notas", "lotes", "listas", "cajas", "bitacora", "ncf"];
 const defaultConfig = () => ({
   empresa: "KPL AGRO", rnc: "1-31-00000-0", direccion: "Autopista Duarte Km 4, Santiago, República Dominicana",
   telefono: "809-000-0000", email: "ventas@kplagro.com", itbis: 18, tasa: 62.5, logo: "",
   pieFactura: "Gracias por su compra. Productos frescos sujetos a disponibilidad de cosecha.",
-  diasCredito: 30
+  diasCredito: 30, ncfModo: "B", funciones: {}, alertas: { whatsapp: "", correo: "", auto: false }
 });
 const store = {
   data: {}, config: defaultConfig(),
@@ -794,6 +802,28 @@ function seed() {
   O(105, 1, "Pedido quincenal", "Despachada", -2, "Media", "José Almonte", [[1, 30], [4, 20]]);
   O(106, 2, "Salsas para restaurante", "Recibida", -1, "Media", "María Rodríguez", [[9, 3]], "Cliente pidió etiqueta personalizada.");
 
+  // Pesos y códigos arancelarios
+  const lbk = x => Math.round(x * LB * 10000) / 10000;
+  const W = { "AJ-GUS-10": [lbk(10), 5.1, "0709.60"], "AJ-CUB-25": [lbk(25), 12.2, "0709.60"], "AJ-MRR-11": [lbk(11), 5.6, "0709.60"], "AJ-MRA-11": [lbk(11), 5.6, "0709.60"], "AJ-MRV-11": [lbk(11), 5.6, "0709.60"], "AJ-SCB-05": [lbk(5), 2.7, "0709.60"], "AJ-HAB-05": [lbk(5), 2.7, "0709.60"], "AJ-JAL-10": [lbk(10), 5.1, "0709.60"], "AJ-CAC-10": [lbk(10), 5.1, "0709.60"], "PR-SAL-250": [3, 4.4, "2103.90"], "PR-PAS-500": [6, 7.6, "2103.90"], "EM-CAJ-25": [0.6, 0.6, "4819.10"] };
+  D.productos.forEach(p => { const w = W[p.sku]; if (w) { p.pesoKg = w[0]; p.pesoBrutoKg = w[1]; p.hs = w[2]; } });
+  D.ventas.forEach(v => v.lineas.forEach(l => { const p = D.productos.find(x => x.id === l.productoId); l.pesoKg = p.pesoKg; l.pesoBrutoKg = p.pesoBrutoKg; l.hs = p.hs; }));
+  D.compras.forEach(c => c.lineas.forEach(l => { const p = D.productos.find(x => x.id === l.productoId); l.pesoKg = p.pesoKg; }));
+  // Secuencias NCF y NCF de las ventas
+  const SEQ = { B01: [1, 500], B02: [1, 3000], B04: [1, 200], B16: [1, 300] }; const nx = { B01: 101, B02: 841, B04: 7, B16: 33 };
+  D.ventas.forEach(v => { const c = D.clientes.find(x => x.id === v.clienteId); const t = v.tipo === "Exportación" ? "B16" : c.rnc ? "B01" : "B02"; v.ncfTipo = t; v.ncf = t + String(nx[t]++).padStart(8, "0"); v.ncfVence = "2027-12-31"; v.metodo = v.condicion === "Contado" ? (v.abonos[0]?.metodo || "Efectivo") : undefined; });
+  Object.entries(SEQ).forEach(([t, [a, b]]) => D.ncf.push({ id: uid(), tipo: t, desde: a, hasta: b, actual: nx[t], vence: "2027-12-31", activo: true }));
+  // Listas de precios
+  const LM = { id: uid(), nombre: "Mayorista local", moneda: "DOP", desc: "Supermercados y distribuidores", precios: {} }, LX = { id: uid(), nombre: "Exportación FOB", moneda: "USD", desc: "Precio FOB Puerto Plata", precios: {} };
+  D.productos.forEach(p => { if (p.categoria !== "Empaque") { LM.precios[p.id] = r2(p.precio * .92); LX.precios[p.id] = r2(p.precio / cfg.tasa * .97); } });
+  D.listas.push(LM, LX); D.clientes[0].listaId = LM.id; D.clientes[1].listaId = LM.id; D.clientes[3].listaId = LX.id; D.clientes[5].listaId = LX.id;
+  // Lotes del inventario actual (PEPS)
+  D.productos.forEach(p => { if (p.stock <= 0) return; const cs = D.compras.filter(c => c.lineas.some(l => l.productoId === p.id)).slice(-2); let rest = p.stock;
+    cs.reverse().forEach((c, i) => { if (rest <= 0) return; const l = c.lineas.find(x => x.productoId === p.id); const q = i === cs.length - 1 ? rest : Math.min(rest, Math.ceil(l.cant * .7)); const pv = D.proveedores.find(x => x.id === c.proveedorId);
+      D.lotes.push({ id: uid(), codigo: `L${c.fecha.replace(/-/g, "").slice(2)}-${c.num}-1`, productoId: p.id, finca: pv.nombre + " (" + pv.ciudad + ")", cosecha: addDays(c.fecha, -1), fecha: c.fecha, compraId: c.id, compraNum: c.num, proveedorId: c.proveedorId, cantidad: l.cant, disponible: q }); rest = r2(rest - q); }); });
+  // Datos de embarque en las exportaciones recientes
+  D.ventas.filter(v => v.tipo === "Exportación").slice(-4).forEach((v, i) => v.emb = { incoterm: "FOB", transporte: i % 2 ? "Aéreo" : "Marítimo", puertoOrigen: i % 2 ? "Aeropuerto del Cibao (STI)" : "Puerto Plata, RD", puertoDestino: { "Estados Unidos": "Miami, FL", "Países Bajos": "Róterdam", "Canadá": "Toronto, ON" }[D.clientes.find(c => c.id === v.clienteId).pais] || "", paisDestino: D.clientes.find(c => c.id === v.clienteId).pais, naviera: i % 2 ? "Amerijet" : "Seaboard Marine", booking: (i % 2 ? "AWB 810-" : "SMLU") + (4410000 + i * 137), contenedor: i % 2 ? "" : "SMLU 52" + (10000 + i * 71), sello: i % 2 ? "" : "KP" + (88100 + i), fechaEmbarque: addDays(v.fecha, 2), temperatura: "7 °C", consignatario: "" });
+  // Formas de pago en los gastos
+  D.gastos.forEach((g, i) => g.metodo = i % 3 === 0 ? "Efectivo" : "Transferencia");
   const mes = ym(t), prev = ym(addDays(mes + "-01", -2));
   D.presupuestos.push({ id: uid(), mes, metaVentas: 1200000, partidas: [
     { categoria: "Compras de mercancía", monto: 520000 }, { categoria: "Nómina", monto: 185000 }, { categoria: "Empaque y etiquetas", monto: 45000 },
@@ -804,21 +834,29 @@ function seed() {
   G(Math.min(dm, 6), "Combustible", "Camión de reparto", 12400); G(Math.min(dm, 4), "Empaque y etiquetas", "Etiquetas de exportación", 8900);
   G(Math.min(dm, 2), "Servicios y oficina", "Electricidad e internet", 9800); G(Math.min(dm, 1), "Combustible", "Camión de reparto", 6100);
   G(30, "Nómina", "Segunda quincena", 92500); G(35, "Flete y exportación", "Carga aérea Miami", 41000);
+  // Una nota de crédito de ejemplo
+  const vNC = D.ventas.filter(v => v.tipo === "Local" && v.estado === "Pagada").slice(-3)[0];
+  if (vNC) { const l = vNC.lineas[0]; const q = Math.max(1, Math.floor(l.cant / 4)); const sub = r2(q * l.precio), itb = r2(sub * vNC.itbisPct / 100);
+    l.devuelto = q; vNC.devuelto = r2(sub + itb);
+    D.notas.push({ id: uid(), num: 1, fecha: addDays(vNC.fecha, 1), ventaId: vNC.id, ventaNum: vNC.num, clienteId: vNC.clienteId, tipo: vNC.tipo, moneda: vNC.moneda, tasa: vNC.tasa, itbisPct: vNC.itbisPct, lineas: [{ productoId: l.productoId, nombre: l.nombre, unidad: l.unidad, pesoKg: l.pesoKg, cant: q, precio: l.precio, costo: l.costo }], subtotal: sub, itbis: itb, total: r2(sub + itb), aplicadoSaldo: 0, reembolso: r2(sub + itb), metodo: "Efectivo", motivo: "Producto dañado o con baja calidad", reingresa: false, ncf: "B04" + String(nx.B04 - 1).padStart(8, "0"), ncfModificado: vNC.ncf, estado: "Aplicada", usuario: "María Rodríguez" }); }
+  // Cierre de caja de ayer
+  D.cajas.push({ id: uid(), fecha: addDays(t, -1), fondo: 5000, esperado: 18450, contado: 18400, diferencia: -50, fondoSiguiente: 5000, notas: "Faltaron RD$50 en monedas.", resumen: {}, movimientos: 6, cerradoPor: "María Rodríguez", hora: "06:12 p. m.", estado: "Cerrada" });
+  D.bitacora.push({ id: uid(), fecha: new Date(Date.now() - 864e5).toISOString(), usuario: "María Rodríguez", email: "ventas@kplagro.com", accion: "Cerró", modulo: "Caja", detalle: "Caja del " + addDays(t, -1) + ": esperado RD$18,450.00, contado RD$18,400.00" });
   store.data = D; store.config = cfg; store.save();
 }
 
 /* ---------------- Usuarios, roles y permisos ---------------- */
 const S = { user: null, view: "dashboard", edit: null, prodView: lsGet("pview", "grid") };
 const PERMS = [
-  { g: "Módulos que puede abrir", items: [["dashboard", "Panel"], ["ventas", "Ventas y facturas"], ["cotizaciones", "Cotizaciones"], ["ordenes", "Órdenes de trabajo"], ["clientes", "Clientes"], ["productos", "Productos"], ["compras", "Compras"], ["proveedores", "Proveedores"], ["kardex", "Kardex"], ["presupuesto", "Presupuesto"], ["reportes", "Reportes"], ["usuarios", "Usuarios y roles"], ["config", "Configuración"]] },
-  { g: "Acciones que puede hacer", items: [["venta-nueva", "Emitir facturas"], ["cotizacion-nueva", "Crear y editar cotizaciones"], ["compra-nueva", "Registrar compras"], ["productos.editar", "Crear y editar productos"], ["inventario.ajustar", "Ajustar existencias"], ["pagos", "Registrar cobros y pagos"], ["finanzas.ver", "Ver costos, ganancias y valor del inventario"], ["anular", "Anular facturas y compras"], ["eliminar", "Eliminar registros"]] }
+  { g: "Módulos que puede abrir", items: [["dashboard", "Panel"], ["ventas", "Ventas y facturas"], ["notas", "Notas de crédito"], ["cotizaciones", "Cotizaciones"], ["ordenes", "Órdenes de trabajo"], ["clientes", "Clientes"], ["listas", "Listas de precios"], ["productos", "Productos"], ["compras", "Compras"], ["proveedores", "Proveedores"], ["lotes", "Lotes y trazabilidad"], ["kardex", "Kardex"], ["caja", "Cierre de caja"], ["presupuesto", "Presupuesto"], ["reportes", "Reportes"], ["usuarios", "Usuarios y roles"], ["bitacora", "Bitácora"], ["config", "Configuración"]] },
+  { g: "Acciones que puede hacer", items: [["venta-nueva", "Emitir facturas"], ["cotizacion-nueva", "Crear y editar cotizaciones"], ["compra-nueva", "Registrar compras"], ["productos.editar", "Crear y editar productos"], ["inventario.ajustar", "Ajustar existencias"], ["pagos", "Registrar cobros y pagos"], ["finanzas.ver", "Ver costos, ganancias y valor del inventario"], ["notas.crear", "Emitir notas de crédito"], ["caja.cerrar", "Cerrar la caja del día"], ["listas.editar", "Crear y editar listas de precios"], ["anular", "Anular facturas, compras y notas"], ["eliminar", "Eliminar registros"]] }
 ];
 const ALL_PERMS = PERMS.flatMap(g => g.items.map(i => i[0]));
-const PERM_NEEDS = { "venta-nueva": "ventas", "cotizacion-nueva": "cotizaciones", "compra-nueva": "compras", "productos.editar": "productos", "inventario.ajustar": "productos", "pagos": "ventas" };
+const PERM_NEEDS = { "venta-nueva": "ventas", "cotizacion-nueva": "cotizaciones", "compra-nueva": "compras", "productos.editar": "productos", "inventario.ajustar": "productos", "pagos": "ventas", "notas.crear": "notas", "caja.cerrar": "caja", "listas.editar": "listas" };
 const DEFAULT_ROLES = () => [
   { id: "rol-propietario", nombre: "Propietario", desc: "Ve y administra todo. Siempre tiene todos los permisos.", permisos: ALL_PERMS.slice(), sistema: true },
-  { id: "rol-vendedor", nombre: "Vendedor", desc: "Factura, cotiza, cobra y atiende clientes. Consulta productos y órdenes.", permisos: ["dashboard", "ventas", "venta-nueva", "cotizaciones", "cotizacion-nueva", "ordenes", "clientes", "productos", "pagos"] },
-  { id: "rol-almacen", nombre: "Almacén", desc: "Registra compras y mantiene productos, existencias, proveedores y kardex.", permisos: ["dashboard", "compras", "compra-nueva", "productos", "productos.editar", "inventario.ajustar", "proveedores", "ordenes", "kardex"] }
+  { id: "rol-vendedor", nombre: "Vendedor", desc: "Factura, cotiza, cobra y atiende clientes. Consulta productos y órdenes.", permisos: ["dashboard", "ventas", "venta-nueva", "notas", "notas.crear", "cotizaciones", "cotizacion-nueva", "ordenes", "clientes", "listas", "productos", "pagos", "caja", "caja.cerrar"] },
+  { id: "rol-almacen", nombre: "Almacén", desc: "Registra compras y mantiene productos, existencias, proveedores y kardex.", permisos: ["dashboard", "compras", "compra-nueva", "productos", "productos.editar", "inventario.ajustar", "proveedores", "lotes", "ordenes", "kardex"] }
 ];
 const roleOf = name => store.all("roles").find(r => r.nombre === name) || DEFAULT_ROLES().find(r => r.nombre === name);
 const isOwner = () => S.user?.rol === "Propietario";
@@ -830,12 +868,12 @@ async function login(email, pass) {
   if (cloud.on) {
     const { error } = await cloud.sb.auth.signInWithPassword({ email, password: pass });
     if (error) throw new Error(error.message === "Invalid login credentials" ? "Correo o contraseña incorrectos." : error.message);
-    return afterCloudAuth(email);
+    await afterCloudAuth(email); audit("Entró", "Sesión", email); return;
   }
   const u = store.all("usuarios").find(x => x.email.toLowerCase() === email);
   if (!u || u.passHash !== await sha(pass)) throw new Error("Correo o contraseña incorrectos.");
   if (!u.activo) throw new Error("Este usuario está desactivado. Habla con el propietario.");
-  S.user = u; lsSet("session", { id: u.id });
+  S.user = u; lsSet("session", { id: u.id }); audit("Entró", "Sesión", u.email);
 }
 async function afterCloudAuth(email) {
   await cloud.pull();
@@ -851,6 +889,7 @@ async function afterCloudAuth(email) {
   if (!store.all("roles").length) { if (u.rol === "Propietario") DEFAULT_ROLES().forEach(r => store.put("roles", r)); else store.data.roles = DEFAULT_ROLES(); }
 }
 async function logout() {
+  audit("Salió", "Sesión", S.user?.email || "");
   if (cloud.on) { try { await cloud.sb.auth.signOut(); } catch {} }
   lsSet("session", null); S.user = null; location.hash = ""; render();
 }
@@ -872,7 +911,7 @@ const subDOP = d => d.moneda === "USD" ? r2(d.subtotal * (d.tasa || store.config
 const ventasOK = () => store.all("ventas").filter(v => v.estado !== "Anulada");
 const comprasOK = () => store.all("compras").filter(v => v.estado !== "Anulada");
 const costoVenta = v => r2(v.lineas.reduce((a, l) => a + l.cant * (l.costo || 0), 0));
-const saldo = v => r2(v.total - (v.pagado || 0));
+const saldo = v => r2(v.total - (v.pagado || 0) - (v.creditos || 0));
 const inRange = (d, a, b) => (!a || d >= a) && (!b || d <= b);
 function heat(p) {
   const r = p.minimo > 0 ? p.stock / p.minimo : (p.stock > 0 ? 5 : 0);
@@ -880,12 +919,129 @@ function heat(p) {
   return `<span class="heat l${lvl}" title="${p.stock <= 0 ? "Agotado" : lvl <= 2 ? "Stock bajo" : "Stock saludable"}"><i></i><i></i><i></i><i></i><i></i><em>${qty(p.stock)}</em></span>`;
 }
 const lowStock = () => store.all("productos").filter(p => p.activo !== false && p.stock <= p.minimo).sort((a, b) => a.stock / (a.minimo || 1) - b.stock / (b.minimo || 1));
-const estadoChip = e => `<span class="chip ${{ Pagada: "ok", Activa: "ok", Aceptada: "ok", Facturada: "info", Pendiente: "warn", Anulada: "bad", Rechazada: "bad", Vencida: "bad" }[e] || ""}">${esc(e)}</span>`;
+const estadoChip = e => `<span class="chip ${{ Pagada: "ok", Activa: "ok", Aceptada: "ok", Aplicada: "ok", Cerrada: "ok", Facturada: "info", Pendiente: "warn", Abierta: "warn", Anulada: "bad", Rechazada: "bad", Vencida: "bad" }[e] || ""}">${esc(e)}</span>`;
+
+/* ================= Núcleo de funciones opcionales ================= */
+const FUNCIONES = [
+  ["ncf", "Comprobantes fiscales (NCF / e-CF)", "Asigna el NCF a cada factura y nota de crédito según el tipo de cliente, con control de secuencias y vencimiento."],
+  ["exportacion", "Documentos de exportación", "Datos de embarque en la factura, factura comercial en inglés y packing list."],
+  ["lotes", "Lotes y trazabilidad", "Cada compra crea lotes con finca y fecha de cosecha; las ventas descuentan por lote (primero en entrar, primero en salir)."],
+  ["notas", "Notas de crédito y devoluciones", "Devoluciones parciales que rebajan el saldo o se reembolsan, con reingreso al inventario o merma."],
+  ["listas", "Listas de precios por cliente", "Precios especiales por cliente (mayorista, exportación, restaurantes…)."],
+  ["unidades", "Conversión de unidades", "Vender o comprar por caja, libra o kilo usando el peso de cada producto."],
+  ["caja", "Cierre de caja diario", "Cuadre del día por efectivo, transferencias, tarjetas y cheques, con faltantes y sobrantes."],
+  ["alertas", "Alertas de stock bajo", "Aviso por WhatsApp o correo cuando un producto llega a su mínimo."],
+  ["bitacora", "Bitácora de auditoría", "Registro de quién hizo qué y cuándo."]
+];
+const feat = k => (store.config.funciones || {})[k] !== false;
+const FEAT_VIEW = { notas: "notas", lotes: "lotes", listas: "listas", caja: "caja", bitacora: "bitacora" };
+const viewOn = v => !FEAT_VIEW[v] || feat(FEAT_VIEW[v]);
+
+/* Bitácora */
+function audit(accion, modulo, detalle = "") {
+  if (!feat("bitacora") || !S.user) return;
+  store.put("bitacora", { fecha: new Date().toISOString(), usuario: S.user.nombre, email: S.user.email, accion, modulo, detalle: String(detalle).slice(0, 300) });
+  const b = store.data.bitacora; if (!cloud.on && b.length > 5000) { b.sort((x, y) => x.fecha.localeCompare(y.fecha)); store.data.bitacora = b.slice(-5000); store.save(); }
+}
+
+/* Unidades: cada línea guarda cant y precio en la unidad base del producto; uv es la unidad en que se escribió */
+const LB = 0.45359237;
+const pesoDe = l => +(l.pesoKg ?? producto(l.productoId)?.pesoKg) || 0;
+const uvFactor = l => { const w = pesoDe(l); return !w || !l.uv || l.uv === "base" ? 1 : l.uv === "kg" ? w : w / LB; };
+const uvName = l => l.uv === "kg" ? "kg" : l.uv === "lb" ? "lb" : (l.unidad || producto(l.productoId)?.unidad || "");
+const uvQty = l => Math.round((+l.cant || 0) * uvFactor(l) * 1000) / 1000;
+const uvPrice = l => Math.round((+l.precio || 0) / uvFactor(l) * 100) / 100;
+const lineQty = l => `${qty(uvQty(l))} ${uvName(l)}`;
+const kgOf = lineas => r2(lineas.reduce((a, l) => a + (+l.cant || 0) * pesoDe(l), 0));
+const brutoOf = lineas => r2(lineas.reduce((a, l) => a + (+l.cant || 0) * (+(l.pesoBrutoKg ?? producto(l.productoId)?.pesoBrutoKg) || pesoDe(l)), 0));
+const pesoTxt = kg => `${qty(kg)} kg · ${qty(r2(kg / LB))} lb`;
+
+/* Existencias: en la nube se mueven con una función atómica de Postgres para que dos ventas simultáneas no se pisen */
+async function moverStock(items, { negativo = false } = {}) {
+  const m = {}; items.forEach(i => { if (!i.delta) return; m[i.id] ||= { id: i.id, delta: 0 }; m[i.id].delta = r2(m[i.id].delta + i.delta); if (i.costo != null) m[i.id].costo = i.costo; });
+  const list = Object.values(m).filter(i => i.delta); if (!list.length) return;
+  const before = Object.fromEntries(list.map(i => [i.id, producto(i.id)?.stock ?? 0]));
+  let done = false;
+  if (cloud.on) {
+    const { data, error } = await cloud.sb.rpc("mover_stock", { items: list, permitir_negativo: negativo });
+    if (!error) { data.forEach(r => { const p = producto(r.id); if (p) { p.stock = +r.stock; p.costo = +r.costo; } }); store.save(); done = true; }
+    else { const x = /STOCK_INSUFICIENTE:([^:]*):([-\d.]+)/.exec(error.message || ""); if (x) throw new Error(`No hay suficiente ${x[1]}: quedan ${qty(+x[2])}.`); if (!/mover_stock|PGRST202|42883/.test((error.message || "") + error.code)) throw new Error(error.message); console.warn("mover_stock no instalado; se usa el modo simple"); }
+  }
+  if (!done) {
+    for (const i of list) { const p = producto(i.id); if (!p) throw new Error("Un producto ya no existe en el catálogo."); if (!negativo && p.stock + i.delta < -1e-9) throw new Error(`No hay suficiente ${p.nombre}: quedan ${qty(p.stock)}.`); }
+    list.forEach(i => { const p = producto(i.id); const st = Math.max(0, p.stock); if (i.costo != null && i.delta > 0) p.costo = r2((st * p.costo + i.delta * i.costo) / (st + i.delta || 1)); p.stock = r2(p.stock + i.delta); store.put("productos", p, true); });
+    store.save();
+  }
+  const cruzaron = list.map(i => producto(i.id)).filter(p => p && p.stock <= p.minimo && before[p.id] > p.minimo);
+  if (cruzaron.length) alertaStock(cruzaron);
+}
+
+/* NCF y e-CF */
+const NCF_TIPOS = { B01: "Crédito fiscal", B02: "Consumo", B14: "Regímenes especiales", B15: "Gubernamental", B16: "Exportaciones", B04: "Nota de crédito", E31: "e-CF Crédito fiscal", E32: "e-CF Consumo", E44: "e-CF Regímenes especiales", E45: "e-CF Gubernamental", E46: "e-CF Exportaciones", E34: "e-CF Nota de crédito" };
+const toE = t => store.config.ncfModo === "E" ? ({ B01: "E31", B02: "E32", B14: "E44", B15: "E45", B16: "E46", B04: "E34" }[t] || t) : t;
+const fmtNCF = (tipo, n) => tipo + String(n).padStart(tipo.startsWith("E") ? 10 : 8, "0");
+const ncfDefault = (c, tipoVenta) => toE(c?.tipoNCF || (tipoVenta === "Exportación" ? "B16" : c?.rnc && c.tipo !== "Exportación" ? "B01" : "B02"));
+const seqFor = tipo => store.all("ncf").filter(s => s.activo !== false && s.tipo === tipo && s.actual <= s.hasta && (!s.vence || s.vence >= today())).sort((a, b) => a.actual - b.actual)[0];
+const seqRest = s => Math.max(0, s.hasta - s.actual + 1);
+function ncfAlertas() {
+  if (!feat("ncf")) return [];
+  const out = []; const tipos = [...new Set(store.all("ncf").filter(s => s.activo !== false).map(s => s.tipo))];
+  tipos.forEach(t => { const s = seqFor(t); if (!s) out.push(`No hay secuencia vigente de ${t} (${NCF_TIPOS[t] || t}).`); else { const r = seqRest(s); if (r <= Math.max(10, (s.hasta - s.desde + 1) * .1)) out.push(`Quedan ${r} comprobantes ${t}.`); if (s.vence && s.vence <= addDays(today(), 30)) out.push(`La secuencia ${t} vence el ${fdate(s.vence)}.`); } });
+  return out;
+}
+async function tomarNCF(tipo) {
+  if (!feat("ncf") || !tipo) return { ncf: "", vence: "" };
+  const s = seqFor(tipo); if (!s) throw new Error(`No hay secuencia NCF ${tipo} vigente. Agrégala en Configuración → Comprobantes.`);
+  if (cloud.on) {
+    const { data, error } = await cloud.sb.rpc("tomar_ncf", { seq_id: s.id });
+    if (!error) { s.actual = +data + 1; store.save(); return { ncf: fmtNCF(tipo, +data), vence: s.vence || "" }; }
+    if (!/tomar_ncf|PGRST202|42883/.test((error.message || "") + error.code)) throw new Error(error.message);
+  }
+  const n = s.actual; s.actual = n + 1; store.put("ncf", s); return { ncf: fmtNCF(tipo, n), vence: s.vence || "" };
+}
+
+/* Lotes (PEPS) */
+const lotesDe = pid => store.all("lotes").filter(l => l.productoId === pid && l.disponible > 0 && !l.anulado).sort((a, b) => (a.cosecha || a.fecha).localeCompare(b.cosecha || b.fecha) || a.codigo.localeCompare(b.codigo));
+function consumirLotes(pid, cant) {
+  if (!feat("lotes")) return [];
+  const out = []; let rest = cant;
+  for (const l of lotesDe(pid)) { if (rest <= 0) break; const t = Math.min(l.disponible, rest); l.disponible = r2(l.disponible - t); rest = r2(rest - t); out.push({ id: l.id, codigo: l.codigo, cant: t }); store.put("lotes", l, true); }
+  return out;
+}
+function devolverLotes(asig, cant) {
+  let rest = cant;
+  (asig || []).slice().reverse().forEach(a => { if (rest <= 0) return; const l = store.get("lotes", a.id); if (!l) return; const t = Math.min(a.cant, rest); l.disponible = r2(l.disponible + t); rest = r2(rest - t); store.put("lotes", l, true); });
+}
+
+/* Listas de precios */
+const listaDe = c => feat("listas") && c?.listaId ? store.get("listas", c.listaId) : null;
+function precioPara(p, { kind, cur, tasa, clienteId }) {
+  if (kind === "compra") return p.costo;
+  const L = listaDe(cliente(clienteId)); let base = p.precio, mon = "DOP";
+  if (L && L.precios?.[p.id] != null && L.precios[p.id] !== "") { base = +L.precios[p.id]; mon = L.moneda || "DOP"; }
+  if (mon === cur) return r2(base);
+  const t = +tasa || store.config.tasa; return cur === "USD" ? r2(base / t) : r2(base * t);
+}
+
+/* Alertas de stock */
+function alertaTexto(prods) { return `Alerta de inventario · ${store.config.empresa}\n` + prods.map(p => `• ${p.nombre} (${p.sku}): quedan ${qty(p.stock)} ${p.unidad}, mínimo ${qty(p.minimo)}`).join("\n"); }
+function alertaLinks(prods) {
+  const a = store.config.alertas || {}; const txt = alertaTexto(prods);
+  const tels = String(a.whatsapp || "").split(/[,;\s]+/).filter(Boolean);
+  return { wa: tels.length ? waLink(tels[0], txt) : `https://wa.me/?text=${encodeURIComponent(txt)}`, mail: `mailto:${encodeURIComponent(a.correo || "")}?subject=${encodeURIComponent("Stock bajo · " + store.config.empresa)}&body=${encodeURIComponent(txt)}` };
+}
+function alertaStock(prods) {
+  if (!feat("alertas")) return;
+  const a = store.config.alertas || {};
+  if (a.auto && cloud.on) cloud.sb.functions.invoke("alerta-stock", { body: { empresa: store.config.empresa, whatsapp: a.whatsapp, correo: a.correo, texto: alertaTexto(prods), productos: prods.map(p => ({ nombre: p.nombre, sku: p.sku, stock: p.stock, minimo: p.minimo, unidad: p.unidad })) } }).catch(() => {});
+  const L = alertaLinks(prods);
+  toast(`${prods.map(p => p.nombre).join(", ")} ${prods.length === 1 ? "quedó" : "quedaron"} en stock bajo.`, "warn", [{ label: "WhatsApp", href: L.wa }, { label: "Correo", href: L.mail }]);
+}
 /* ---------------- Componentes base ---------------- */
-function toast(msg, type) {
+function toast(msg, type, actions) {
   const t = document.createElement("div"); t.className = "toast " + (type || "");
-  t.innerHTML = ic(type === "err" ? "i-alert" : "i-check") + `<span>${esc(msg)}</span>`;
-  $("#toasts").append(t); setTimeout(() => { t.style.opacity = 0; t.style.transition = "opacity .3s"; setTimeout(() => t.remove(), 300); }, type === "err" ? 5200 : 2800);
+  t.innerHTML = ic(type === "err" || type === "warn" ? "i-alert" : "i-check") + `<span>${esc(msg)}</span>` + (actions ? `<span class="t-acts">${actions.map(a => `<a href="${esc(a.href)}" target="_blank" rel="noopener">${esc(a.label)}</a>`).join("")}</span>` : "");
+  $("#toasts").append(t); setTimeout(() => { t.style.opacity = 0; t.style.transition = "opacity .3s"; setTimeout(() => t.remove(), 300); }, actions ? 12000 : type === "err" ? 5200 : 2800);
 }
 function modal({ title, body, foot = "", size = "" }) {
   const bg = document.createElement("div"); bg.className = "modal-bg";
@@ -990,18 +1146,18 @@ function toggleTheme() { lsSet("theme", isDark() ? "light" : "dark"); applyTheme
 /* ---------------- Navegación ---------------- */
 const NAV = [
   { g: "", items: [["dashboard", "Panel", "i-home"]] },
-  { g: "Comercial", items: [["ventas", "Ventas y facturas", "i-receipt"], ["cotizaciones", "Cotizaciones", "i-quote"], ["ordenes", "Órdenes de trabajo", "i-board"], ["clientes", "Clientes", "i-users"]] },
-  { g: "Inventario", items: [["productos", "Productos", "i-box"], ["compras", "Compras", "i-cart"], ["proveedores", "Proveedores", "i-truck"], ["kardex", "Kardex", "i-list"]] },
-  { g: "Finanzas", items: [["presupuesto", "Presupuesto", "i-pie"], ["reportes", "Reportes", "i-chart"]] },
-  { g: "Sistema", items: [["usuarios", "Usuarios y roles", "i-shield"], ["config", "Configuración", "i-gear"]] }
+  { g: "Comercial", items: [["ventas", "Ventas y facturas", "i-receipt"], ["notas", "Notas de crédito", "i-swap"], ["cotizaciones", "Cotizaciones", "i-quote"], ["ordenes", "Órdenes de trabajo", "i-board"], ["clientes", "Clientes", "i-users"], ["listas", "Listas de precios", "i-list"]] },
+  { g: "Inventario", items: [["productos", "Productos", "i-box"], ["compras", "Compras", "i-cart"], ["proveedores", "Proveedores", "i-truck"], ["lotes", "Lotes", "i-grid"], ["kardex", "Kardex", "i-rows"]] },
+  { g: "Finanzas", items: [["caja", "Cierre de caja", "i-cash"], ["presupuesto", "Presupuesto", "i-pie"], ["reportes", "Reportes", "i-chart"]] },
+  { g: "Sistema", items: [["usuarios", "Usuarios y roles", "i-shield"], ["bitacora", "Bitácora", "i-adjust"], ["config", "Configuración", "i-gear"]] }
 ];
-const TITLES = { dashboard: "Panel", ventas: "Ventas y facturas", "venta-nueva": "Nueva factura", cotizaciones: "Cotizaciones", "cotizacion-nueva": "Cotización", ordenes: "Órdenes de trabajo", clientes: "Clientes", productos: "Productos", compras: "Compras", "compra-nueva": "Nueva compra", proveedores: "Proveedores", kardex: "Kardex", presupuesto: "Presupuesto", reportes: "Reportes", usuarios: "Usuarios y roles", config: "Configuración" };
+const TITLES = { dashboard: "Panel", ventas: "Ventas y facturas", "venta-nueva": "Nueva factura", cotizaciones: "Cotizaciones", "cotizacion-nueva": "Cotización", ordenes: "Órdenes de trabajo", clientes: "Clientes", productos: "Productos", compras: "Compras", "compra-nueva": "Nueva compra", proveedores: "Proveedores", kardex: "Kardex", presupuesto: "Presupuesto", reportes: "Reportes", usuarios: "Usuarios y roles", config: "Configuración", notas: "Notas de crédito", listas: "Listas de precios", lotes: "Lotes y trazabilidad", caja: "Cierre de caja", bitacora: "Bitácora" };
 const VIEWS = {};
 function go(v, ctx) { S.pendingCtx = ctx || null; if (location.hash !== "#" + v) { S.skipHash = true; location.hash = v; } route(); }
 
 function brandMark() { const c = store.config; return c.logo ? `<img src="${c.logo}" alt="">` : `<span style="width:100%;height:100%;background:#fff;display:grid;place-items:center">${kplLogo(false).replace("<svg ", '<svg style="width:84%;height:84%" ')}</span>`; }
 function shellHTML() {
-  const navHTML = NAV.map(g => { const items = g.items.filter(([v]) => can(v)); if (!items.length) return ""; return (g.g ? `<div class="grp">${g.g}</div>` : "") + items.map(([v, t, i]) => `<a href="#${v}" data-nav="${v}">${ic(i)}<span>${t}</span>${v === "productos" ? `<span class="count" data-low></span>` : v === "ordenes" ? `<span class="count" data-late></span>` : ""}</a>`).join(""); }).join("");
+  const navHTML = NAV.map(g => { const items = g.items.filter(([v]) => can(v) && viewOn(v)); if (!items.length) return ""; return (g.g ? `<div class="grp">${g.g}</div>` : "") + items.map(([v, t, i]) => `<a href="#${v}" data-nav="${v}">${ic(i)}<span>${t}</span>${v === "productos" ? `<span class="count" data-low></span>` : v === "ordenes" ? `<span class="count" data-late></span>` : ""}</a>`).join(""); }).join("");
   const fab = can("venta-nueva") ? ["venta-nueva", "Facturar"] : can("compra-nueva") ? ["compra-nueva", "Comprar"] : can("cotizacion-nueva") ? ["cotizacion-nueva", "Cotizar"] : null;
   const b2 = [["ventas", "Ventas", "i-receipt"], ["compras", "Compras", "i-cart"], ["ordenes", "Órdenes", "i-board"], ["clientes", "Clientes", "i-users"]].find(x => can(x[0])) || ["dashboard", "Panel", "i-home"];
   const b3 = [["productos", "Productos", "i-box"], ["ordenes", "Órdenes", "i-board"], ["reportes", "Reportes", "i-chart"]].find(x => can(x[0]) && x[0] !== b2[0]);
@@ -1038,7 +1194,7 @@ function updateBadges() {
 function route() {
   if (!S.user) return render();
   let v = decodeURIComponent(location.hash.slice(1)) || "dashboard";
-  if (!VIEWS[v] || !can(v)) v = "dashboard";
+  if (!VIEWS[v] || !can(v) || !viewOn(v)) v = "dashboard";
   $$(".modal-bg").forEach(m => m._close ? m._close() : m.remove());
   S.view = v; S.ctx = S.pendingCtx; S.pendingCtx = null;
   const parent = { "venta-nueva": "ventas", "compra-nueva": "compras", "cotizacion-nueva": "cotizaciones" }[v] || v;
@@ -1055,7 +1211,7 @@ function render() {
 }
 
 /* ---------------- Login ---------------- */
-const APP_VERSION = "2026.11.13-3";
+const APP_VERSION = "2026.11.13-4";
 const VENDOR = { nombre: "SP BJ SOFTWARE", instagram: "@bjsoftware", telefono: "849-473-3173" };
 /* Logo de BJ Software: hexágono con cubo */
 const bjHex = (size = 40) => `<svg viewBox="0 0 64 64" width="${size}" height="${size}" role="img" aria-label="BJ Software"><polygon points="32,5 55.4,18.5 55.4,45.5 32,59 8.6,45.5 8.6,18.5" fill="none" stroke="#F28C1B" stroke-width="5" stroke-linejoin="round"/><polygon points="32,19 43.5,25.5 32,32 20.5,25.5" fill="#FFB65C"/><polygon points="20.5,25.5 32,32 32,45 20.5,38.5" fill="#F59B2E"/><polygon points="43.5,25.5 32,32 32,45 43.5,38.5" fill="#DB720C"/></svg>`;
@@ -1117,7 +1273,7 @@ function palette() {
   document.body.append(el);
   const inp = el.querySelector("input"), ul = el.querySelector("ul"); let items = [], sel = 0;
   const actions = [["venta-nueva", "Nueva factura", "i-receipt"], ["cotizacion-nueva", "Nueva cotización", "i-quote"], ["compra-nueva", "Nueva compra", "i-cart"]].filter(([v]) => can(v));
-  const views = NAV.flatMap(g => g.items).filter(([v]) => can(v));
+  const views = NAV.flatMap(g => g.items).filter(([v]) => can(v) && viewOn(v));
   const close = () => el.remove();
   const draw = () => {
     const q = norm(inp.value.trim()); items = [];
@@ -1246,14 +1402,17 @@ VIEWS.dashboard = el => {
   const top = Object.entries(tp).map(([id, value]) => { const p = producto(id); return { label: p?.nombre || "—", value: r2(value), color: p?.color }; }).sort((a, b) => b.value - a.value).slice(0, 5);
   const topHTML = can("finanzas.ver") || can("ventas") ? `<section class="panel"><header><h2>Más vendidos, 90 días</h2></header>${bars(top)}</section>` : "";
   const low = lowStock().slice(0, 6);
-  const lowHTML = `<section class="panel flush"><header><h2>Stock bajo</h2>${can("compra-nueva") && low.length ? `<a class="btn sm" href="#compra-nueva">${ic("i-plus")}Comprar</a>` : ""}</header><div class="feed">${low.map(p => `<a data-lowp="${p.id}"><span class="thumb">${photo(p)}</span><span><b>${esc(p.nombre)}</b><small>Mínimo ${qty(p.minimo)} · ${esc(p.unidad)}</small></span>${heat(p)}</a>`).join("") || `<div class="empty">${ic("i-check")}<b>Todo en orden</b>Ningún producto por debajo del mínimo.</div>`}</div></section>`;
+  const lowHTML = `<section class="panel flush"><header><h2>Stock bajo</h2><span style="display:flex;gap:6px">${feat("alertas") && low.length ? `<a class="btn sm icon" href="${alertaLinks(low).wa}" target="_blank" rel="noopener" title="Avisar por WhatsApp" aria-label="Avisar por WhatsApp">${ic("i-wa")}</a>` : ""}${can("compra-nueva") && low.length ? `<a class="btn sm" href="#compra-nueva">${ic("i-plus")}Comprar</a>` : ""}</span></header><div class="feed">${low.map(p => `<a data-lowp="${p.id}"><span class="thumb">${photo(p)}</span><span><b>${esc(p.nombre)}</b><small>Mínimo ${qty(p.minimo)} · ${esc(p.unidad)}</small></span>${heat(p)}</a>`).join("") || `<div class="empty">${ic("i-check")}<b>Todo en orden</b>Ningún producto por debajo del mínimo.</div>`}</div></section>`;
   const ots = store.all("ordenes").filter(o => o.estado !== "Despachada").sort((a, b) => a.entrega.localeCompare(b.entrega)).slice(0, 4);
   const otHTML = `<section class="panel flush"><header><h2>Próximas entregas</h2><a class="btn sm ghost" href="#ordenes">Ver tablero</a></header><div class="feed">${ots.map(o => `<a href="#ordenes"><span class="ic" style="background:var(--surface-2)">${ic("i-board")}</span><span><b>${esc(o.titulo)}</b><small>${esc(cliente(o.clienteId).nombre)} · ${esc(o.estado)}</small></span><span class="small ${o.entrega < t ? "down" : "muted"}" style="font-weight:700">${o.entrega < t ? "Atrasada" : fdate(o.entrega)}</span></a>`).join("") || `<div class="empty">Sin órdenes pendientes.</div>`}</div></section>`;
-  el.innerHTML = `<div class="hello"><div><h1>${saludo}, ${esc(S.user.nombre.split(" ")[0])}</h1><p class="muted" style="margin:4px 0 0">${new Date().toLocaleDateString("es-DO", { weekday: "long", day: "numeric", month: "long" })}</p></div><div class="quick">${quick}</div></div>
+  const ncfA = can("config") ? ncfAlertas() : [];
+  const alertHTML = ncfA.length ? `<div class="note" style="margin-bottom:16px">${ic("i-alert")}<span><b>Comprobantes fiscales:</b> ${ncfA.map(esc).join(" ")} <a href="#config" data-gocfg style="color:inherit;font-weight:700">Revisar</a></span></div>` : "";
+  el.innerHTML = alertHTML + `<div class="hello"><div><h1>${saludo}, ${esc(S.user.nombre.split(" ")[0])}</h1><p class="muted" style="margin:4px 0 0">${new Date().toLocaleDateString("es-DO", { weekday: "long", day: "numeric", month: "long" })}</p></div><div class="quick">${quick}</div></div>
     <div class="kpis">${kpis}</div>
     <div class="dash"><div class="col">${chart}${feed}</div><div class="col">${topHTML}${lowHTML}${otHTML}</div></div>`;
   $$("[data-feed]", el).forEach(a => a.onclick = () => { const x = acts[+a.dataset.feed]; if (x.k === "venta") ventaDetail(x.d); else if (x.k === "compra") compraDetail(x.d); else cotDetail(x.d); });
   $$("[data-lowp]", el).forEach(a => a.onclick = () => lightbox(producto(a.dataset.lowp)));
+  $("[data-gocfg]", el)?.addEventListener("click", () => { S.cfgTab = "ncf"; });
 };
 
 /* ---------------- Productos ---------------- */
@@ -1331,6 +1490,8 @@ function productForm(p) {
     <label class="field"><span>${nuevo ? "Existencia inicial" : "Existencia actual"}</span><input class="input" name="stock" type="number" step="0.01" value="${p.stock}" ${nuevo ? "" : "readonly title='Usa Ajustar para cambiar la existencia'"}></label>
     <label class="field"><span>Stock mínimo</span><input class="input" name="minimo" type="number" step="1" min="0" value="${p.minimo}"></label></div>
     <div class="small muted" data-margin></div>
+    <div class="grid g3"><label class="field"><span>Peso neto por unidad (kg)</span><input class="input" name="pesoKg" type="number" step="0.001" min="0" value="${p.pesoKg ?? ""}" placeholder="Ej. 4.536"></label><label class="field"><span>Peso bruto por unidad (kg)</span><input class="input" name="pesoBrutoKg" type="number" step="0.001" min="0" value="${p.pesoBrutoKg ?? ""}" placeholder="Con empaque"></label><label class="field"><span>Código arancelario (HS)</span><input class="input" name="hs" value="${esc(p.hs || "")}" placeholder="0709.60"></label></div>
+    <div class="small muted" data-peso></div>
     <div class="field"><span>Color de la ilustración</span><div class="swatches">${COLORS.map((c, i) => `<input type="radio" name="color" id="sw${i}" value="${c}" ${p.color === c ? "checked" : ""}><label for="sw${i}" style="background:${c}" title="${c}"></label>`).join("")}</div></div>
     <label class="field"><span>Descripción</span><textarea class="input" name="desc" rows="2">${esc(p.desc)}</textarea></label>
     <label class="switch"><input type="checkbox" name="activo" ${p.activo !== false ? "checked" : ""}> Activo para la venta</label></form>`,
@@ -1339,6 +1500,8 @@ function productForm(p) {
   const F = m.$("[data-f]");
   const margin = () => { const c = +F.costo.value, pr = +F.precio.value; m.$("[data-margin]").textContent = pr ? `Margen: ${((pr - c) / pr * 100).toFixed(1)}% · ganancia por unidad ${money(pr - c)} · en dólares ≈ ${money(pr / store.config.tasa, "USD")}` : ""; };
   F.costo.oninput = F.precio.oninput = margin; margin();
+  const peso = () => { const w = +F.pesoKg.value; m.$("[data-peso]").textContent = w ? `Cada ${F.unidad.value || "unidad"} pesa ${qty(w)} kg (${qty(r2(w / LB))} lb). Precio por libra ≈ ${money((+F.precio.value || 0) / (w / LB))} · por kilo ≈ ${money((+F.precio.value || 0) / w)}` : "Con el peso puedes vender por libra o kilo y calcular el peso de los embarques."; };
+  F.pesoKg.oninput = F.unidad.oninput = peso; F.precio.addEventListener("input", peso); peso();
   const refreshPrev = () => { m.$(".prev").innerHTML = photo({ ...p, ...formData(F), foto: p.foto }); };
   F.addEventListener("change", e => { if (e.target.name === "color" || e.target.name === "forma") refreshPrev(); });
   m.$("[data-zoomp]").onclick = () => lightbox({ ...p, ...formData(F), foto: p.foto });
@@ -1347,7 +1510,7 @@ function productForm(p) {
   m.$("[data-del]")?.addEventListener("click", async () => {
     const used = ["ventas", "compras", "cotizaciones"].some(c => store.all(c).some(d => d.lineas.some(l => l.productoId === p.id)));
     if (used) return toast("Este producto tiene documentos registrados. Desactívalo en lugar de eliminarlo.", "err");
-    if (await confirmBox(`Se eliminará ${esc(p.nombre)} del catálogo.`, { ok: "Eliminar", danger: true })) { store.del("productos", p.id); m.close(); route(); toast("Producto eliminado"); }
+    if (await confirmBox(`Se eliminará ${esc(p.nombre)} del catálogo.`, { ok: "Eliminar", danger: true })) { store.del("productos", p.id); audit("Eliminó", "Productos", p.nombre); m.close(); route(); toast("Producto eliminado"); }
   });
   m.$("[data-save]")?.addEventListener("click", () => {
     if (!requireFields(F, ["nombre", "sku", "costo", "precio"])) return;
@@ -1355,7 +1518,10 @@ function productForm(p) {
     if (store.all("productos").some(x => x.sku === d.sku && x.id !== p.id)) { F.sku.classList.add("err"); return toast("Ya existe un producto con ese SKU.", "err"); }
     if (d.precio < d.costo && !confirm("El precio es menor que el costo. ¿Guardar de todos modos?")) return;
     const o = { ...p, ...d, stock: nuevo ? +d.stock || 0 : p.stock, foto: p.foto };
-    store.put("productos", o); m.close(); route(); toast(nuevo ? "Producto creado" : "Cambios guardados");
+    ["pesoKg", "pesoBrutoKg"].forEach(k => o[k] = o[k] === "" ? 0 : +o[k]);
+    const old = store.get("productos", p.id); store.put("productos", o);
+    audit(nuevo ? "Creó" : "Modificó", "Productos", `${o.nombre}${old && (old.precio !== o.precio || old.costo !== o.costo) ? ` · precio ${money(old.precio)} → ${money(o.precio)}, costo ${money(old.costo)} → ${money(o.costo)}` : ""}`);
+    m.close(); route(); toast(nuevo ? "Producto creado" : "Cambios guardados");
   });
 }
 function ajusteForm(p) {
@@ -1369,12 +1535,16 @@ function ajusteForm(p) {
   m.$("[data-tipo]").onclick = e => { const b = e.target.closest("button"); if (!b) return; t = +b.dataset.t; $$("[data-tipo] button", m.el).forEach(x => x.classList.toggle("on", x === b)); m.$("[data-ql]").textContent = t === 0 ? "Existencia contada" : t > 0 ? "Cantidad a sumar" : "Cantidad a restar"; if (t === 0) F.motivo.value = "Conteo físico"; upd(); };
   F.cant.oninput = upd; upd();
   m.$("[data-save]").onclick = () => {
-    if (F.cant.value === "") return requireFields(F, ["cant"]);
+    if (F.cant.value === "") return requireFields(F, ["cant"]); if (m.$("[data-save]").disabled) return;
     const c = +F.cant.value; const diff = t === 0 ? r2(c - p.stock) : t * c;
     if (!diff) { m.close(); return; }
     if (p.stock + diff < 0) return toast("La salida es mayor que la existencia.", "err");
-    store.put("ajustes", { fecha: today(), productoId: p.id, cant: diff, motivo: F.motivo.value, usuario: S.user.nombre });
-    p.stock = r2(p.stock + diff); store.put("productos", p); m.close(); route(); toast("Existencia ajustada");
+    const b = m.$("[data-save]"); b.disabled = true;
+    moverStock([{ id: p.id, delta: diff }]).then(() => {
+      if (diff < 0) consumirLotes(p.id, -diff);
+      store.put("ajustes", { fecha: today(), productoId: p.id, cant: diff, motivo: F.motivo.value, usuario: S.user.nombre });
+      audit("Ajustó", "Inventario", `${p.nombre}: ${diff > 0 ? "+" : ""}${qty(diff)} (${F.motivo.value})`); m.close(); route(); toast("Existencia ajustada");
+    }).catch(x => { toast(x.message, "err"); b.disabled = false; });
   };
 }
 
@@ -1417,14 +1587,16 @@ function partyView(col) {
 VIEWS.clientes = partyView("clientes"); VIEWS.proveedores = partyView("proveedores");
 function partyForm(col, o, onSaved) {
   const cfg = PARTY[col]; const nuevo = !o; o = o ? { ...o } : (col === "clientes" ? { tipo: "Local", pais: "República Dominicana" } : {});
-  const m = modal({ title: nuevo ? "Nuevo " + cfg.one : o.nombre, body: `<form class="grid g2" data-f>${cfg.fields.map(([k, l, span, opts]) => `<label class="field ${span === 2 ? "span2" : ""}"><span>${l}</span>${opts ? `<select class="input" name="${k}">${opts.map(x => `<option ${o[k] === x ? "selected" : ""}>${x}</option>`).join("")}</select>` : `<input class="input" name="${k}" value="${esc(o[k] || "")}" ${k === "email" ? 'type="email"' : k === "telefono" ? 'type="tel"' : ""}>`}</label>`).join("")}</form>`,
-    foot: `${!nuevo && can("eliminar") ? `<button class="btn danger" data-del style="margin-right:auto">${ic("i-trash")}Eliminar</button>` : ""}${!nuevo && o.telefono ? `<a class="btn" target="_blank" rel="noopener" href="${waLink(o.telefono)}">${ic("i-wa")}WhatsApp</a>` : ""}<button class="btn" data-close>Cancelar</button><button class="btn pri" data-save>${nuevo ? "Crear " + cfg.one : "Guardar cambios"}</button>` });
+  const extra = col === "clientes" ? `${feat("listas") ? `<label class="field"><span>Lista de precios</span><select class="input" name="listaId"><option value="">Precio normal</option>${store.all("listas").map(L => `<option value="${L.id}" ${o.listaId === L.id ? "selected" : ""}>${esc(L.nombre)} (${L.moneda === "USD" ? "US$" : "RD$"})</option>`).join("")}</select></label>` : ""}${feat("ncf") ? `<label class="field"><span>Comprobante por defecto</span><select class="input" name="tipoNCF"><option value="">Automático según el cliente</option>${["B01", "B02", "B14", "B15", "B16"].map(t => `<option value="${t}" ${o.tipoNCF === t ? "selected" : ""}>${t} · ${NCF_TIPOS[t]}</option>`).join("")}</select></label>` : ""}` : `<label class="field"><span>Tipo de bienes o servicios (606)</span><select class="input" name="tipo606">${TIPOS_606.map(([k, l]) => `<option value="${k}" ${(o.tipo606 || "09") === k ? "selected" : ""}>${k} · ${l}</option>`).join("")}</select></label>`;
+  const m = modal({ title: nuevo ? "Nuevo " + cfg.one : o.nombre, body: `<form class="grid g2" data-f>${cfg.fields.map(([k, l, span, opts]) => `<label class="field ${span === 2 ? "span2" : ""}"><span>${l}</span>${opts ? `<select class="input" name="${k}">${opts.map(x => `<option ${o[k] === x ? "selected" : ""}>${x}</option>`).join("")}</select>` : `<input class="input" name="${k}" value="${esc(o[k] || "")}" ${k === "email" ? 'type="email"' : k === "telefono" ? 'type="tel"' : ""}>`}</label>`).join("")}${extra}</form>`,
+    foot: `${!nuevo && can("eliminar") ? `<button class="btn danger" data-del style="margin-right:auto">${ic("i-trash")}Eliminar</button>` : ""}${!nuevo && col === "clientes" ? `<button class="btn" data-ec>${ic("i-receipt")}Estado de cuenta</button>` : ""}${!nuevo && o.telefono ? `<a class="btn" target="_blank" rel="noopener" href="${waLink(o.telefono)}">${ic("i-wa")}WhatsApp</a>` : ""}<button class="btn" data-close>Cancelar</button><button class="btn pri" data-save>${nuevo ? "Crear " + cfg.one : "Guardar cambios"}</button>` });
   const F = m.$("[data-f]");
-  m.$("[data-save]").onclick = () => { if (!requireFields(F, ["nombre"])) return; const saved = store.put(col, { ...o, ...formData(F) }); m.close(); if (onSaved) onSaved(saved); else route(); toast(nuevo ? (cfg.one[0].toUpperCase() + cfg.one.slice(1)) + " creado" : "Cambios guardados"); };
+  m.$("[data-ec]")?.addEventListener("click", () => { m.close(); estadoCuenta(o); });
+  m.$("[data-save]").onclick = () => { if (!requireFields(F, ["nombre"])) return; const saved = store.put(col, { ...o, ...formData(F) }); audit(nuevo ? "Creó" : "Modificó", cfg.title, saved.nombre); m.close(); if (onSaved) onSaved(saved); else route(); toast(nuevo ? (cfg.one[0].toUpperCase() + cfg.one.slice(1)) + " creado" : "Cambios guardados"); };
   m.$("[data-del]")?.addEventListener("click", async () => {
     const key = col === "clientes" ? "clienteId" : "proveedorId"; const used = ["ventas", "compras", "cotizaciones", "ordenes"].some(c => store.all(c).some(d => d[key] === o.id));
     if (used) return toast(`Este ${cfg.one} tiene documentos registrados y no se puede eliminar.`, "err");
-    if (await confirmBox(`Se eliminará ${esc(o.nombre)}.`, { ok: "Eliminar", danger: true })) { store.del(col, o.id); m.close(); route(); toast("Eliminado"); }
+    if (await confirmBox(`Se eliminará ${esc(o.nombre)}.`, { ok: "Eliminar", danger: true })) { store.del(col, o.id); audit("Eliminó", cfg.title, o.nombre); m.close(); route(); toast("Eliminado"); }
   });
 }
 
@@ -1434,35 +1606,49 @@ const KINDS = {
   cotizacion: { col: "cotizaciones", party: "clientes", key: "clienteId", title: "Nueva cotización", save: "Guardar cotización", start: 301, back: "cotizaciones" },
   compra: { col: "compras", party: "proveedores", key: "proveedorId", title: "Nueva compra", save: "Registrar compra", start: 501, back: "compras" }
 };
+const INCOTERMS = ["FOB", "CIF", "CFR", "EXW", "FCA", "CPT", "CIP", "DAP", "DDP"];
+const EMB_FIELDS = [["incoterm", "Incoterm"], ["transporte", "Transporte"], ["puertoOrigen", "Puerto de embarque"], ["puertoDestino", "Puerto de destino"], ["paisDestino", "País de destino"], ["naviera", "Naviera o aerolínea"], ["booking", "Booking / AWB"], ["contenedor", "Contenedor"], ["sello", "Sello"], ["fechaEmbarque", "Fecha de embarque"], ["temperatura", "Temperatura"], ["consignatario", "Consignatario (si es distinto)"]];
+function embFieldsHTML(e = {}) {
+  return `<div class="grid g3">${EMB_FIELDS.map(([k, l]) => `<label class="field ${k === "consignatario" ? "span2" : ""}"><span>${l}</span>${k === "incoterm" ? `<select class="input" data-emb="${k}">${INCOTERMS.map(x => `<option ${e[k] === x ? "selected" : ""}>${x}</option>`).join("")}</select>` : k === "transporte" ? `<select class="input" data-emb="${k}">${["Marítimo", "Aéreo", "Terrestre"].map(x => `<option ${e[k] === x ? "selected" : ""}>${x}</option>`).join("")}</select>` : `<input class="input" data-emb="${k}" ${k === "fechaEmbarque" ? 'type="date"' : ""} value="${esc(e[k] || (k === "puertoOrigen" ? "Puerto Plata, RD" : k === "temperatura" ? "7 °C" : ""))}">`}</label>`).join("")}</div>`;
+}
+const readEmb = root => Object.fromEntries($$("[data-emb]", root).map(i => [i.dataset.emb, i.value.trim()]));
+const PAGOS = ["Efectivo", "Transferencia", "Tarjeta", "Cheque"];
+const TIPOS_606 = [["01", "Gastos de personal"], ["02", "Gastos por trabajos, suministros y servicios"], ["03", "Arrendamientos"], ["04", "Gastos de activos fijos"], ["05", "Gastos de representación"], ["06", "Otras deducciones admitidas"], ["07", "Gastos financieros"], ["08", "Gastos extraordinarios"], ["09", "Compras y gastos que forman parte del costo de venta"], ["10", "Adquisiciones de activos"], ["11", "Gastos de seguros"]];
+
 function docEditor(kind) {
   return el => {
     const K = KINDS[kind], cfg = store.config, ctx = S.ctx || {};
-    let d = { fecha: today(), lineas: [], itbisPct: kind === "compra" ? 0 : cfg.itbis, moneda: "DOP", tasa: cfg.tasa, tipo: "Local", condicion: "Contado", notas: "", [K.key]: "" };
+    let d = { fecha: today(), lineas: [], itbisPct: kind === "compra" ? 0 : cfg.itbis, moneda: "DOP", tasa: cfg.tasa, tipo: "Local", condicion: "Contado", metodo: "Efectivo", notas: "", [K.key]: "", emb: {} };
     let editing = null, fromCot = null;
     if (kind === "cotizacion") d.valida = addDays(today(), 15);
     if (ctx.edit) { editing = store.get(K.col, ctx.edit); if (editing) d = JSON.parse(JSON.stringify(editing)); }
     if (ctx.fromCot) { fromCot = store.get("cotizaciones", ctx.fromCot); if (fromCot) Object.assign(d, { clienteId: fromCot.clienteId, tipo: fromCot.tipo, moneda: fromCot.moneda, tasa: fromCot.tasa, itbisPct: fromCot.itbisPct, notas: fromCot.notas, lineas: JSON.parse(JSON.stringify(fromCot.lineas)) }); }
-    if (ctx.fromCompraProd) { const p = producto(ctx.fromCompraProd); if (p) d.lineas.push({ productoId: p.id, nombre: p.nombre, unidad: p.unidad, cant: Math.max(1, p.minimo * 2 - p.stock), precio: p.costo }); }
+    if (ctx.fromCompraProd) { const p = producto(ctx.fromCompraProd); if (p) d.lineas.push({ productoId: p.id, nombre: p.nombre, unidad: p.unidad, pesoKg: p.pesoKg || 0, cant: Math.max(1, p.minimo * 2 - p.stock), precio: p.costo }); }
     const num = editing ? editing.num : store.next(K.col, K.start);
     const parties = () => store.all(K.party).slice().sort((a, b) => a.nombre.localeCompare(b.nombre));
     const isSale = kind !== "compra";
-    el.innerHTML = `<div class="vhead"><div><h1>${editing ? "Editar cotización #" + num : K.title}</h1><p>${{ venta: `Factura #${num}${fromCot ? " · desde la cotización #" + fromCot.num : ""}. Al emitirla se descuenta del inventario.`, cotizacion: `Cotización #${num}. No afecta el inventario hasta convertirla en factura.`, compra: `Compra #${num}. Al registrarla se suma al inventario y se actualiza el costo.` }[kind]}</p></div>
+    if (kind === "venta") d.ncfTipo ||= ncfDefault(cliente(d.clienteId), d.tipo);
+    const ncfOpts = () => Object.keys(NCF_TIPOS).filter(t => t !== "B04" && t !== "E34" && t.startsWith(cfg.ncfModo === "E" ? "E" : "B"));
+    el.innerHTML = `<div class="vhead"><div><h1>${editing ? "Editar cotización #" + num : K.title}</h1><p>${{ venta: `Factura #${num}${fromCot ? " · desde la cotización #" + fromCot.num : ""}. Al emitirla se descuenta del inventario.`, cotizacion: `Cotización #${num}. No afecta el inventario hasta convertirla en factura.`, compra: `Compra #${num}. Al registrarla se suma al inventario${feat("lotes") ? ", se crean los lotes" : ""} y se actualiza el costo.` }[kind]}</p></div>
       <div class="acts"><a class="btn" href="#${K.back}">Volver al listado</a></div></div>
     <div class="doc"><div class="grid" style="gap:16px">
-      <section class="panel"><header><h2>Datos generales</h2></header><div class="grid g3" data-head>
+      <section class="panel"><header><h2>Datos generales</h2><span class="small muted" data-lista></span></header><div class="grid g3" data-head>
         <label class="field span2"><span>${isSale ? "Cliente" : "Proveedor"}</span><div style="display:flex;gap:6px"><select class="input" name="party"><option value="">Selecciona ${isSale ? "un cliente" : "un proveedor"}</option>${parties().map(p => `<option value="${p.id}" ${d[K.key] === p.id ? "selected" : ""}>${esc(p.nombre)}${p.tipo === "Exportación" ? " (exportación)" : ""}</option>`).join("")}</select><button class="btn icon" style="height:42px;width:42px;flex:none" data-newparty title="Nuevo ${isSale ? "cliente" : "proveedor"}" aria-label="Nuevo">${ic("i-plus")}</button></div></label>
         <label class="field"><span>Fecha</span><input class="input" type="date" name="fecha" value="${d.fecha}"></label>
         ${isSale ? `<div class="field"><span>Tipo de venta</span><div class="seg" data-tipo><button type="button" data-v="Local" class="${d.tipo === "Local" ? "on" : ""}">Local</button><button type="button" data-v="Exportación" class="${d.tipo === "Exportación" ? "on" : ""}">${ic("i-globe").replace("<svg", '<svg style="width:14px;height:14px;vertical-align:-2px"')} Exportación</button></div></div>
         <label class="field"><span>Moneda</span><select class="input" name="moneda"><option value="DOP" ${d.moneda === "DOP" ? "selected" : ""}>Pesos (RD$)</option><option value="USD" ${d.moneda === "USD" ? "selected" : ""}>Dólares (US$)</option></select></label>
-        <label class="field" data-tasa><span>Tasa US$ → RD$</span><input class="input" type="number" step="0.01" name="tasa" value="${d.tasa}"></label>` : `<label class="field"><span>Comprobante (NCF o factura)</span><input class="input" name="documento" value="${esc(d.documento || "")}" placeholder="B0100000000"></label>`}
+        <label class="field" data-tasa><span>Tasa US$ → RD$</span><input class="input" type="number" step="0.01" name="tasa" value="${d.tasa}"></label>` : `<label class="field"><span>Comprobante del proveedor (NCF)</span><input class="input" name="documento" value="${esc(d.documento || "")}" placeholder="B0100000000"></label>`}
+        ${kind === "venta" && feat("ncf") ? `<label class="field"><span>Comprobante fiscal</span><select class="input" name="ncfTipo">${ncfOpts().map(t => `<option value="${t}" ${d.ncfTipo === t ? "selected" : ""}>${t} · ${NCF_TIPOS[t]}</option>`).join("")}</select></label>` : ""}
         ${kind === "cotizacion" ? `<label class="field"><span>Válida hasta</span><input class="input" type="date" name="valida" value="${d.valida}"></label>` : `<div class="field"><span>Condición de pago</span><div class="seg" data-cond><button type="button" data-v="Contado" class="${d.condicion === "Contado" ? "on" : ""}">Contado</button><button type="button" data-v="Crédito" class="${d.condicion === "Crédito" ? "on" : ""}">Crédito</button></div></div>`}
+        ${kind !== "cotizacion" ? `<label class="field" data-metodo><span>Forma de pago</span><select class="input" name="metodo">${PAGOS.map(x => `<option ${d.metodo === x ? "selected" : ""}>${x}</option>`).join("")}</select></label>` : ""}
         ${kind === "venta" ? `<label class="field" data-vence><span>Vence</span><input class="input" type="date" name="vence" value="${d.vence || addDays(d.fecha, cfg.diasCredito)}"></label>` : ""}
       </div></section>
       <section class="panel"><header><h2>Productos</h2><span class="small muted" data-count></span></header>
         <div class="lines-head"><span></span><span>Producto</span><span>Cantidad</span><span>Precio</span><span>Total</span><span></span></div>
         <div class="lines" data-lines></div>
         <button class="addline" data-add>${ic("i-plus")}Agregar productos</button></section>
-      <section class="panel"><label class="field"><span>${kind === "cotizacion" ? "Condiciones y notas para el cliente" : "Notas"}</span><textarea class="input" name="notas" rows="3" placeholder="${kind === "cotizacion" ? "Tiempo de entrega, Incoterm (FOB, CIF), forma de pago…" : kind === "venta" ? "Puerto de salida, contenedor, instrucciones de entrega…" : "Calidad recibida, lote, observaciones…"}">${esc(d.notas || "")}</textarea></label></section>
+      ${kind === "venta" && feat("exportacion") ? `<section class="panel" data-embp><header><h2>Datos de embarque</h2><span class="small muted">Para la factura comercial y el packing list. Puedes completarlos después.</span></header>${embFieldsHTML(d.emb)}</section>` : ""}
+      <section class="panel"><label class="field"><span>${kind === "cotizacion" ? "Condiciones y notas para el cliente" : "Notas"}</span><textarea class="input" name="notas" rows="3" placeholder="${kind === "cotizacion" ? "Tiempo de entrega, Incoterm (FOB, CIF), forma de pago…" : kind === "venta" ? "Instrucciones de entrega…" : "Calidad recibida, observaciones…"}">${esc(d.notas || "")}</textarea></label></section>
     </div>
     <aside class="sum"><section class="panel"><header><h2>Resumen</h2></header><div class="totals" data-totals></div>
       <label class="field" style="margin-top:14px"><span>Impuesto</span><select class="input" name="itbisPct">${[[18, "ITBIS 18%"], [16, "ITBIS 16%"], [0, "Exento (0%)"]].map(([v, t]) => `<option value="${v}" ${+d.itbisPct === v ? "selected" : ""}>${t}</option>`).join("")}</select></label>
@@ -1474,35 +1660,47 @@ function docEditor(kind) {
     const syncHead = () => {
       if (isSale) $("[data-tasa]", el).style.display = d.moneda === "USD" ? "" : "none";
       if (kind === "venta") $("[data-vence]", el).style.display = d.condicion === "Crédito" ? "" : "none";
+      if (kind !== "cotizacion") $("[data-metodo]", el).style.display = d.condicion === "Contado" ? "" : "none";
+      const embp = $("[data-embp]", el); if (embp) embp.style.display = d.tipo === "Exportación" ? "" : "none";
+      const L = isSale ? listaDe(cliente(d.clienteId)) : null; $("[data-lista]", el).textContent = L ? "Lista de precios: " + L.nombre : "";
     };
     const totals = () => {
       d.subtotal = r2(d.lineas.reduce((a, l) => a + (+l.cant || 0) * (+l.precio || 0), 0)); d.itbis = r2(d.subtotal * (+d.itbisPct || 0) / 100); d.total = r2(d.subtotal + d.itbis);
+      const kg = kgOf(d.lineas);
       $("[data-totals]", el).innerHTML = `<div><span class="muted">Subtotal</span><span>${money(d.subtotal, cur())}</span></div><div><span class="muted">${+d.itbisPct ? "ITBIS " + d.itbisPct + "%" : "Exento de ITBIS"}</span><span>${money(d.itbis, cur())}</span></div>
         <div class="grand"><span>Total</span><span>${money(d.total, cur())}</span></div>${cur() === "USD" ? `<div class="small muted"><span>Equivale a</span><span>${money(d.total * (+d.tasa || 0))}</span></div>` : ""}
+        ${kg && feat("unidades") ? `<div class="small muted"><span>Peso neto</span><span>${pesoTxt(kg)}</span></div>` : ""}
         ${kind === "venta" && can("finanzas.ver") ? `<div class="small muted"><span>Ganancia estimada</span><span>${money(subDOP(d) - d.lineas.reduce((a, l) => a + (+l.cant || 0) * (producto(l.productoId)?.costo || 0), 0))}</span></div>` : ""}`;
       $("[data-count]", el).textContent = d.lineas.length ? d.lineas.length + (d.lineas.length === 1 ? " producto" : " productos") : "";
     };
-    const stockNote = l => { if (kind !== "venta") return ""; const p = producto(l.productoId); if (!p) return ""; const need = d.lineas.filter(x => x.productoId === l.productoId).reduce((a, x) => a + (+x.cant || 0), 0); return need > p.stock ? `<span class="warn-stock">Solo hay ${qty(p.stock)} disponibles</span>` : `Disponible: ${qty(p.stock)}`; };
+    const stockNote = l => { if (kind !== "venta") return ""; const p = producto(l.productoId); if (!p) return ""; const need = d.lineas.filter(x => x.productoId === l.productoId).reduce((a, x) => a + (+x.cant || 0), 0); return need > p.stock + 1e-9 ? `<span class="warn-stock">Solo hay ${qty(p.stock)} ${esc(p.unidad)}</span>` : `Disponible: ${qty(p.stock)}`; };
+    const uvSel = (l, i) => feat("unidades") && pesoDe(l) ? `<select class="input uvsel" data-uv="${i}" aria-label="Unidad">${[["base", l.unidad || "Unidad"], ["lb", "Libras"], ["kg", "Kilos"]].map(([v, t]) => `<option value="${v}" ${(l.uv || "base") === v ? "selected" : ""}>${esc(t)}</option>`).join("")}</select>` : "";
+    const loteRow = (l, i) => kind === "compra" && feat("lotes") ? `<div class="lote-row"><label class="field"><span>Finca / origen</span><input class="input" data-lf="finca" data-i="${i}" value="${esc(l.finca || "")}"></label><label class="field"><span>Fecha de cosecha</span><input class="input" type="date" data-lf="cosecha" data-i="${i}" value="${l.cosecha || d.fecha}"></label></div>` : "";
     const drawLines = () => {
-      $("[data-lines]", el).innerHTML = d.lineas.length ? d.lineas.map((l, i) => { const p = producto(l.productoId) || l; return `<div class="line" data-i="${i}"><button class="thumb" data-zoom="${l.productoId}" aria-label="Ver foto">${photo(p)}</button><div class="nm"><b>${esc(l.nombre)}</b><small>${esc(l.unidad || "")}${kind === "venta" ? " · " : ""}<span data-sn>${stockNote(l)}</span></small></div>
-        <label class="q lf"><span>Cantidad</span><input class="input" type="number" min="0" step="any" inputmode="decimal" value="${l.cant}" data-f="cant" aria-label="Cantidad"></label><label class="p lf"><span>Precio</span><input class="input" type="number" min="0" step="0.01" inputmode="decimal" value="${l.precio}" data-f="precio" aria-label="Precio unitario"></label>
-        <div class="tot" data-lt>${money(l.cant * l.precio, cur())}</div><button class="btn ghost icon del" data-rm="${i}" aria-label="Quitar">${ic("i-trash")}</button></div>`; }).join("")
+      $("[data-lines]", el).innerHTML = d.lineas.length ? d.lineas.map((l, i) => { const p = producto(l.productoId) || l; return `<div class="line-wrap"><div class="line" data-i="${i}"><button class="thumb" data-zoom="${l.productoId}" aria-label="Ver foto">${photo(p)}</button><div class="nm"><b>${esc(l.nombre)}</b><small>${uvSel(l, i) || esc(l.unidad || "")}${kind === "venta" ? " · " : ""}<span data-sn>${stockNote(l)}</span></small></div>
+        <label class="q lf"><span>Cantidad</span><input class="input" type="number" min="0" step="any" inputmode="decimal" value="${uvQty(l)}" data-f="cant" aria-label="Cantidad"></label><label class="p lf"><span>Precio</span><input class="input" type="number" min="0" step="0.01" inputmode="decimal" value="${uvPrice(l)}" data-f="precio" aria-label="Precio unitario"></label>
+        <div class="tot" data-lt>${money(l.cant * l.precio, cur())}</div><button class="btn ghost icon del" data-rm="${i}" aria-label="Quitar">${ic("i-trash")}</button></div>${loteRow(l, i)}</div>`; }).join("")
         : `<div class="empty">${ic("i-box")}<b>Aún no hay productos</b>Toca “Agregar productos” para elegirlos del catálogo.</div>`;
       totals();
     };
-    $("[data-lines]", el).addEventListener("input", e => {
-      const inp = e.target.closest("[data-f]"); if (!inp) return; const row = inp.closest(".line"); const l = d.lineas[+row.dataset.i];
-      l[inp.dataset.f] = inp.value === "" ? "" : +inp.value; row.querySelector("[data-lt]").textContent = money((+l.cant || 0) * (+l.precio || 0), cur());
+    const L = $("[data-lines]", el);
+    L.addEventListener("input", e => {
+      const lf = e.target.closest("[data-lf]"); if (lf) { d.lineas[+lf.dataset.i][lf.dataset.lf] = lf.value; return; }
+      const inp = e.target.closest("[data-f]"); if (!inp) return; const row = inp.closest(".line"); const l = d.lineas[+row.dataset.i]; const k = uvFactor(l);
+      if (inp.value === "") l[inp.dataset.f] = ""; else if (inp.dataset.f === "cant") l.cant = +inp.value / k; else l.precio = +inp.value * k;
+      row.querySelector("[data-lt]").textContent = money((+l.cant || 0) * (+l.precio || 0), cur());
       $$(".line", el).forEach(r => { const x = d.lineas[+r.dataset.i]; r.querySelector("[data-sn]").innerHTML = stockNote(x); }); totals();
     });
-    $("[data-lines]", el).addEventListener("click", e => {
+    L.addEventListener("change", e => { const s = e.target.closest("[data-uv]"); if (s) { d.lineas[+s.dataset.uv].uv = s.value; drawLines(); } });
+    L.addEventListener("click", e => {
       const rm = e.target.closest("[data-rm]"); if (rm) { d.lineas.splice(+rm.dataset.rm, 1); drawLines(); }
       const z = e.target.closest("[data-zoom]"); if (z && producto(z.dataset.zoom)) lightbox(producto(z.dataset.zoom));
     });
     const convert = (from, to) => { if (from === to) return; d.lineas.forEach(l => l.precio = to === "USD" ? r2(l.precio / d.tasa) : r2(l.precio * d.tasa)); };
+    const reprice = () => { if (!isSale || !d.lineas.length) return; const Lst = listaDe(cliente(d.clienteId)); d.lineas.forEach(l => { const p = producto(l.productoId); if (p) l.precio = precioPara(p, { kind, cur: cur(), tasa: d.tasa, clienteId: d.clienteId }); }); if (Lst) toast("Se aplicaron los precios de la lista " + Lst.nombre); };
     head.addEventListener("change", e => {
       const n = e.target.name;
-      if (n === "party") { d[K.key] = e.target.value; const c = store.get(K.party, e.target.value); if (isSale && c && c.tipo !== d.tipo) setTipo(c.tipo); }
+      if (n === "party") { d[K.key] = e.target.value; const c = store.get(K.party, e.target.value); if (isSale && c && c.tipo !== d.tipo) setTipo(c.tipo); if (kind === "venta" && c) { d.ncfTipo = ncfDefault(c, d.tipo); const s = head.querySelector("[name=ncfTipo]"); if (s) s.value = d.ncfTipo; } if (kind === "compra" && c) d.lineas.forEach(l => l.finca ||= c.ciudad ? c.nombre + " (" + c.ciudad + ")" : c.nombre); reprice(); drawLines(); }
       else if (n === "moneda") { convert(d.moneda, e.target.value); d.moneda = e.target.value; drawLines(); }
       else if (n === "tasa") { d.tasa = +e.target.value || cfg.tasa; totals(); }
       else if (n) d[n] = e.target.value;
@@ -1512,7 +1710,9 @@ function docEditor(kind) {
     const setTipo = t => {
       d.tipo = t; $$("[data-tipo] button", el).forEach(b => b.classList.toggle("on", b.dataset.v === t));
       const mon = t === "Exportación" ? "USD" : "DOP"; convert(d.moneda, mon); d.moneda = mon; head.querySelector("[name=moneda]").value = mon;
-      d.itbisPct = t === "Exportación" ? 0 : cfg.itbis; $("[name=itbisPct]", el).value = d.itbisPct; syncHead(); drawLines();
+      d.itbisPct = t === "Exportación" ? 0 : cfg.itbis; $("[name=itbisPct]", el).value = d.itbisPct;
+      if (kind === "venta") { d.ncfTipo = ncfDefault(cliente(d.clienteId), t); const s = head.querySelector("[name=ncfTipo]"); if (s) s.value = d.ncfTipo; }
+      syncHead(); drawLines();
     };
     $("[data-tipo]", el)?.addEventListener("click", e => { const b = e.target.closest("button"); if (b) setTipo(b.dataset.v); });
     $("[data-cond]", el)?.addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; d.condicion = b.dataset.v; $$("[data-cond] button", el).forEach(x => x.classList.toggle("on", x === b)); syncHead(); });
@@ -1520,14 +1720,14 @@ function docEditor(kind) {
     $("[name=notas]", el).oninput = e => d.notas = e.target.value;
     $("[data-newparty]", el).onclick = () => partyForm(K.party, null, saved => { const sel = head.querySelector("[name=party]"); sel.insertAdjacentHTML("beforeend", `<option value="${saved.id}">${esc(saved.nombre)}</option>`); sel.value = saved.id; sel.dispatchEvent(new Event("change", { bubbles: true })); });
     $("[data-add]", el).onclick = () => picker(kind, d, cur(), () => drawLines());
-    $("[data-save]", el).onclick = () => saveDoc(kind, d, { editing, fromCot, num });
+    $("[data-save]", el).onclick = async e => { const b = e.currentTarget; if (b.disabled) return; const embp = $("[data-embp]", el); if (embp && d.tipo === "Exportación") d.emb = readEmb(embp); else if (kind === "venta") d.emb = {}; b.disabled = true; try { await saveDoc(kind, d, { editing, fromCot, num }); } finally { b.disabled = false; } };
     syncHead(); drawLines();
   };
 }
 function picker(kind, d, cur, done) {
   const cats = ["Todos", ...new Set(store.all("productos").map(p => p.categoria))]; let cat = "Todos", q = "";
   const m = modal({ title: "Agregar productos", size: "wide", body: `<div class="toolbar"><label class="searchbox">${ic("i-search")}<input class="input" placeholder="Buscar por nombre o SKU" data-q aria-label="Buscar producto"></label></div><div class="seg" data-cats style="margin-bottom:14px">${cats.map(c => `<button class="${c === cat ? "on" : ""}">${esc(c)}</button>`).join("")}</div><div class="picker-grid" data-g></div>`, foot: `<span class="small muted" style="margin-right:auto" data-n></span><button class="btn pri" data-close>Listo</button>` });
-  const priceFor = p => kind === "compra" ? p.costo : cur === "USD" ? r2(p.precio / (+d.tasa || store.config.tasa)) : p.precio;
+  const priceFor = p => precioPara(p, { kind, cur, tasa: d.tasa, clienteId: d.clienteId });
   const draw = () => {
     const n = norm(q); const list = store.all("productos").filter(p => p.activo !== false && (cat === "Todos" || p.categoria === cat) && (!n || norm(p.nombre + " " + p.sku).includes(n)));
     m.$("[data-g]").innerHTML = list.map(p => { const inDoc = d.lineas.filter(l => l.productoId === p.id).reduce((a, l) => a + (+l.cant || 0), 0); const out = kind === "venta" && p.stock <= 0;
@@ -1539,43 +1739,53 @@ function picker(kind, d, cur, done) {
   m.$("[data-g]").onclick = e => {
     const b = e.target.closest("[data-p]"); if (!b || b.disabled) return; const p = producto(b.dataset.p);
     const ex = d.lineas.find(l => l.productoId === p.id);
-    if (ex) ex.cant = (+ex.cant || 0) + 1; else d.lineas.push({ productoId: p.id, nombre: p.nombre, unidad: p.unidad, cant: 1, precio: priceFor(p) });
+    if (ex) ex.cant = (+ex.cant || 0) + 1; else { const pv = kind === "compra" ? proveedor(d.proveedorId) : null; d.lineas.push({ productoId: p.id, nombre: p.nombre, unidad: p.unidad, pesoKg: p.pesoKg || 0, pesoBrutoKg: p.pesoBrutoKg || 0, hs: p.hs || "", uv: "base", cant: 1, precio: priceFor(p), ...(kind === "compra" ? { finca: pv?.nombre ? pv.nombre + (pv.ciudad ? " (" + pv.ciudad + ")" : "") : "", cosecha: d.fecha } : {}) }); }
     draw(); done();
     b.animate?.([{ transform: "scale(.96)" }, { transform: "scale(1)" }], { duration: 160 });
   };
   draw();
   const obs = new MutationObserver(() => { if (!m.el.isConnected) { obs.disconnect(); done(); } }); obs.observe(document.body, { childList: true });
 }
-function saveDoc(kind, d, { editing, fromCot, num }) {
+async function saveDoc(kind, d, { editing, fromCot }) {
   const K = KINDS[kind];
   if (!d[K.key]) { toast(kind === "compra" ? "Elige el proveedor." : "Elige el cliente.", "err"); $("[name=party]")?.focus(); return; }
   d.lineas = d.lineas.filter(l => +l.cant > 0);
   if (!d.lineas.length) return toast("Agrega al menos un producto con cantidad mayor que cero.", "err");
   if (d.lineas.some(l => l.precio === "" || +l.precio < 0)) return toast("Revisa los precios: no pueden quedar vacíos.", "err");
-  d.lineas.forEach(l => { l.cant = +l.cant; l.precio = r2(+l.precio); });
-  if (kind === "venta") {
-    const need = {}; d.lineas.forEach(l => need[l.productoId] = (need[l.productoId] || 0) + l.cant);
-    const short_ = Object.entries(need).map(([id, c]) => ({ p: producto(id), c })).find(x => !x.p || x.c > x.p.stock);
-    if (short_) return toast(short_.p ? `No hay suficiente ${short_.p.nombre}: pides ${qty(short_.c)} y hay ${qty(short_.p.stock)}.` : "Un producto ya no existe en el catálogo.", "err");
-  }
+  d.lineas.forEach(l => { l.cant = Math.round(+l.cant * 100000) / 100000; l.precio = Math.round(+l.precio * 10000) / 10000; });
   d.subtotal = r2(d.lineas.reduce((a, l) => a + l.cant * l.precio, 0)); d.itbis = r2(d.subtotal * (+d.itbisPct || 0) / 100); d.total = r2(d.subtotal + d.itbis);
-  if (kind === "venta") {
-    const v = { ...d, num: store.next("ventas", 1001), usuario: S.user.nombre, tasa: d.moneda === "USD" ? +d.tasa : 1, vence: d.condicion === "Crédito" ? (d.vence || addDays(d.fecha, store.config.diasCredito)) : "", cotizacionId: fromCot?.id || "" };
-    v.lineas.forEach(l => { const p = producto(l.productoId); l.costo = p.costo; p.stock = r2(p.stock - l.cant); store.put("productos", p, true); });
-    v.abonos = v.condicion === "Contado" ? [{ fecha: v.fecha, monto: v.total, metodo: "Efectivo" }] : []; v.pagado = v.condicion === "Contado" ? v.total : 0; v.estado = v.condicion === "Contado" ? "Pagada" : "Pendiente";
-    if (d.moneda !== "USD") v.tasa = store.config.tasa;
-    store.put("ventas", v);
-    if (fromCot) { fromCot.estado = "Facturada"; fromCot.ventaId = v.id; store.put("cotizaciones", fromCot); }
-    toast(`Factura #${v.num} emitida`); go("ventas"); setTimeout(() => ventaDetail(v, true), 60);
-  } else if (kind === "compra") {
-    const c = { ...d, num: store.next("compras", 501), usuario: S.user.nombre, estado: d.condicion === "Contado" ? "Pagada" : "Pendiente" };
-    delete c.moneda; delete c.tasa; delete c.tipo;
-    c.lineas.forEach(l => { const p = producto(l.productoId); const st = Math.max(0, p.stock); p.costo = r2((st * p.costo + l.cant * l.precio) / (st + l.cant || 1)); p.stock = r2(p.stock + l.cant); store.put("productos", p, true); });
-    store.put("compras", c); toast(`Compra #${c.num} registrada. Inventario actualizado.`); go("compras");
-  } else {
-    const q = editing ? { ...editing, ...d } : { ...d, num: store.next("cotizaciones", 301), usuario: S.user.nombre, estado: "Pendiente" };
-    store.put("cotizaciones", q); toast(editing ? "Cotización actualizada" : `Cotización #${q.num} guardada`); go("cotizaciones"); setTimeout(() => cotDetail(q), 60);
-  }
+  try {
+    if (kind === "venta") {
+      const v = { ...d, usuario: S.user.nombre, tasa: d.moneda === "USD" ? +d.tasa : store.config.tasa, vence: d.condicion === "Crédito" ? (d.vence || addDays(d.fecha, store.config.diasCredito)) : "", cotizacionId: fromCot?.id || "" };
+      if (v.condicion === "Crédito") delete v.metodo;
+      await moverStock(v.lineas.map(l => ({ id: l.productoId, delta: -l.cant })));
+      try { const n = await tomarNCF(feat("ncf") ? v.ncfTipo : ""); v.ncf = n.ncf; v.ncfVence = n.vence; }
+      catch (x) { await moverStock(v.lineas.map(l => ({ id: l.productoId, delta: l.cant })), { negativo: true }); throw x; }
+      if (!feat("ncf")) delete v.ncfTipo;
+      v.num = store.next("ventas", 1001);
+      v.lineas.forEach(l => { const p = producto(l.productoId); l.costo = p.costo; l.pesoKg = p.pesoKg || 0; l.pesoBrutoKg = p.pesoBrutoKg || 0; l.hs = p.hs || ""; l.lotes = consumirLotes(l.productoId, l.cant); });
+      v.abonos = v.condicion === "Contado" ? [{ fecha: v.fecha, monto: v.total, metodo: v.metodo || "Efectivo", usuario: S.user.nombre }] : []; v.pagado = v.condicion === "Contado" ? v.total : 0; v.estado = v.condicion === "Contado" ? "Pagada" : "Pendiente";
+      store.put("ventas", v);
+      if (fromCot) { fromCot.estado = "Facturada"; fromCot.ventaId = v.id; store.put("cotizaciones", fromCot); }
+      audit("Emitió", "Ventas", `Factura #${v.num}${v.ncf ? " · " + v.ncf : ""} a ${cliente(v.clienteId).nombre} por ${money(v.total, v.moneda)}`);
+      toast(`Factura #${v.num} emitida`); go("ventas"); setTimeout(() => ventaDetail(v, true), 60);
+    } else if (kind === "compra") {
+      const c = { ...d, usuario: S.user.nombre, estado: d.condicion === "Contado" ? "Pagada" : "Pendiente" };
+      delete c.moneda; delete c.tasa; delete c.tipo; delete c.emb; if (c.condicion === "Crédito") delete c.metodo;
+      await moverStock(c.lineas.map(l => ({ id: l.productoId, delta: l.cant, costo: l.precio })));
+      c.num = store.next("compras", 501);
+      if (feat("lotes")) c.lineas.forEach((l, i) => { const lote = store.put("lotes", { codigo: `L${(l.cosecha || c.fecha).replace(/-/g, "").slice(2)}-${c.num}-${i + 1}`, productoId: l.productoId, finca: l.finca || proveedor(c.proveedorId).nombre, cosecha: l.cosecha || c.fecha, fecha: c.fecha, compraId: c.id || "", compraNum: c.num, proveedorId: c.proveedorId, cantidad: l.cant, disponible: l.cant }, true); l.loteId = lote.id; l.lote = lote.codigo; });
+      store.put("compras", c);
+      if (feat("lotes")) c.lineas.forEach(l => { const lt = store.get("lotes", l.loteId); if (lt) { lt.compraId = c.id; store.put("lotes", lt, true); } }); store.save();
+      audit("Registró", "Compras", `Compra #${c.num} a ${proveedor(c.proveedorId).nombre} por ${money(c.total)}`);
+      toast(`Compra #${c.num} registrada. Inventario actualizado.`); go("compras");
+    } else {
+      const q = editing ? { ...editing, ...d } : { ...d, num: store.next("cotizaciones", 301), usuario: S.user.nombre, estado: "Pendiente" };
+      delete q.emb; delete q.metodo;
+      store.put("cotizaciones", q); audit(editing ? "Modificó" : "Creó", "Cotizaciones", `Cotización #${q.num} por ${money(q.total, q.moneda)}`);
+      toast(editing ? "Cotización actualizada" : `Cotización #${q.num} guardada`); go("cotizaciones"); setTimeout(() => cotDetail(q), 60);
+    }
+  } catch (x) { toast(x.message || "No se pudo guardar.", "err"); }
 }
 VIEWS["venta-nueva"] = docEditor("venta");
 VIEWS["cotizacion-nueva"] = docEditor("cotizacion");
@@ -1586,7 +1796,7 @@ function docList(o) {
   return el => {
     const f = { desde: addDays(today(), -90), hasta: "", party: "", estado: "", q: "" }; const pg = pager(o.col);
     const partyCol = o.party, key = partyCol === "clientes" ? "clienteId" : "proveedorId";
-    el.innerHTML = `<div class="vhead"><div><h1>${o.title}</h1><p data-sum></p></div><div class="acts">${o.extra || ""}${exportBtns()}${can(o.newView) ? `<a class="btn ${o.newHot ? "hot" : "pri"}" href="#${o.newView}">${ic("i-plus")}<span class="lbl">${o.newLabel}</span></a>` : ""}</div></div>
+    el.innerHTML = `<div class="vhead"><div><h1>${o.title}</h1><p data-sum></p></div><div class="acts">${o.extra || ""}${exportBtns()}${o.newView && can(o.newView) ? `<a class="btn ${o.newHot ? "hot" : "pri"}" href="#${o.newView}">${ic("i-plus")}<span class="lbl">${o.newLabel}</span></a>` : ""}</div></div>
       <section class="panel" style="margin-bottom:14px;padding:14px"><div class="grid g4 keep2" style="align-items:end">
         <label class="field"><span>Desde</span><input class="input" type="date" data-f="desde" value="${f.desde}"></label><label class="field"><span>Hasta</span><input class="input" type="date" data-f="hasta"></label>
         <label class="field"><span>${partyCol === "clientes" ? "Cliente" : "Proveedor"}</span><select class="input" data-f="party"><option value="">Todos</option>${store.all(partyCol).slice().sort((a, b) => a.nombre.localeCompare(b.nombre)).map(p => `<option value="${p.id}">${esc(p.nombre)}</option>`).join("")}</select></label>
@@ -1632,58 +1842,182 @@ VIEWS.compras = docList({ col: "compras", kind: "compra", title: "Compras", part
 VIEWS.cotizaciones = docList({ col: "cotizaciones", kind: "cotizacion", title: "Cotizaciones", party: "clientes", newView: "cotizacion-nueva", newLabel: "Nueva cotización", estados: ["Pendiente", "Aceptada", "Facturada", "Rechazada"], start: 301, icon: "i-quote", open: v => cotDetail(v) });
 
 function linesTable(d, withCost) {
-  const cur = d.moneda || "DOP";
-  return `<div class="tbl-wrap" style="margin:14px 0"><table class="t"><thead><tr><th>Producto</th><th class="r">Cant.</th><th class="r">Precio</th><th class="r">Total</th>${withCost ? '<th class="r">Costo</th>' : ""}</tr></thead><tbody>${d.lineas.map(l => `<tr><td><div class="cell-main"><span class="thumb" style="width:36px;height:36px">${photo(producto(l.productoId) || l)}</span><span><b>${esc(l.nombre)}</b><small>${esc(l.unidad || "")}</small></span></div></td><td class="n">${qty(l.cant)}</td><td class="n">${money(l.precio, cur)}</td><td class="n"><b>${money(l.cant * l.precio, cur)}</b></td>${withCost ? `<td class="n muted">${money(l.cant * (l.costo || 0))}</td>` : ""}</tr>`).join("")}</tbody></table></div>
-  <div class="totals" style="max-width:320px;margin-left:auto"><div><span class="muted">Subtotal</span><span>${money(d.subtotal, cur)}</span></div><div><span class="muted">${+d.itbisPct ? "ITBIS " + d.itbisPct + "%" : "Exento"}</span><span>${money(d.itbis, cur)}</span></div><div class="grand"><span>Total</span><span>${money(d.total, cur)}</span></div>${cur === "USD" ? `<div class="small muted"><span>Tasa ${d.tasa}</span><span>${money(d.total * d.tasa)}</span></div>` : ""}</div>`;
+  const cur = d.moneda || "DOP"; const kg = kgOf(d.lineas);
+  return `<div class="tbl-wrap" style="margin:14px 0"><table class="t"><thead><tr><th>Producto</th><th class="r">Cant.</th><th class="r">Precio</th><th class="r">Total</th>${withCost ? '<th class="r">Costo</th>' : ""}</tr></thead><tbody>${d.lineas.map(l => `<tr><td><div class="cell-main"><span class="thumb" style="width:36px;height:36px">${photo(producto(l.productoId) || l)}</span><span><b>${esc(l.nombre)}</b><small>${esc(l.unidad || "")}${l.devuelto ? ` · devuelto ${qty(l.devuelto)}` : ""}${feat("lotes") && (l.lotes?.length || l.lote) ? ` · lote ${esc(l.lote || l.lotes.map(x => x.codigo).join(", "))}` : ""}</small></span></div></td><td class="n">${lineQty(l)}</td><td class="n">${money(uvPrice(l), cur)}</td><td class="n"><b>${money(l.cant * l.precio, cur)}</b></td>${withCost ? `<td class="n muted">${money(l.cant * (l.costo || 0))}</td>` : ""}</tr>`).join("")}</tbody></table></div>
+  <div class="totals" style="max-width:320px;margin-left:auto"><div><span class="muted">Subtotal</span><span>${money(d.subtotal, cur)}</span></div><div><span class="muted">${+d.itbisPct ? "ITBIS " + d.itbisPct + "%" : "Exento"}</span><span>${money(d.itbis, cur)}</span></div><div class="grand"><span>Total</span><span>${money(d.total, cur)}</span></div>${cur === "USD" ? `<div class="small muted"><span>Tasa ${d.tasa}</span><span>${money(d.total * d.tasa)}</span></div>` : ""}${kg && feat("unidades") ? `<div class="small muted"><span>Peso neto</span><span>${pesoTxt(kg)}</span></div>` : ""}</div>`;
 }
 function ventaDetail(v, fresh) {
   const c = cliente(v.clienteId); const venc = v.estado === "Pendiente" && v.vence && v.vence < today();
+  const notas = store.all("notas").filter(n => n.ventaId === v.id && n.estado !== "Anulada");
+  const devolvible = v.lineas.some(l => l.cant - (l.devuelto || 0) > 1e-9);
+  const isExp = v.tipo === "Exportación" && feat("exportacion");
   const m = modal({ title: "Factura #" + v.num, size: "wide", body: `${fresh ? `<div class="note ok" style="margin-bottom:14px">${ic("i-check")}<span>Factura emitida y existencias actualizadas. Puedes imprimirla o enviarla por WhatsApp.</span></div>` : ""}
-    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px">${estadoChip(venc ? "Vencida" : v.estado)}<span class="chip plain ${v.tipo === "Exportación" ? "info" : ""}">${esc(v.tipo)}</span><span class="chip plain">${esc(v.condicion)}</span></div>
-    <dl class="dl"><dt>Cliente</dt><dd>${esc(c.nombre)}${c.rnc ? ` · ${esc(c.rnc)}` : ""}</dd><dt>Fecha</dt><dd>${fdate(v.fecha)}</dd>${v.condicion === "Crédito" ? `<dt>Vence</dt><dd class="${venc ? "down" : ""}">${fdate(v.vence)}</dd>` : ""}<dt>Facturó</dt><dd>${esc(v.usuario)}</dd>${v.cotizacionId ? `<dt>Origen</dt><dd>Cotización #${store.get("cotizaciones", v.cotizacionId)?.num || "—"}</dd>` : ""}${v.notas ? `<dt>Notas</dt><dd style="font-weight:400">${esc(v.notas)}</dd>` : ""}</dl>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px">${estadoChip(venc ? "Vencida" : v.estado)}<span class="chip plain ${v.tipo === "Exportación" ? "info" : ""}">${esc(v.tipo)}</span><span class="chip plain">${esc(v.condicion)}${v.metodo ? " · " + esc(v.metodo) : ""}</span>${v.ncf ? `<span class="chip plain">NCF ${esc(v.ncf)}</span>` : ""}</div>
+    <dl class="dl"><dt>Cliente</dt><dd>${esc(c.nombre)}${c.rnc ? ` · ${esc(c.rnc)}` : ""}</dd><dt>Fecha</dt><dd>${fdate(v.fecha)}</dd>${v.ncf ? `<dt>Comprobante</dt><dd>${esc(v.ncf)} · ${esc(NCF_TIPOS[v.ncf.slice(0, 3)] || "")}</dd>` : ""}${v.condicion === "Crédito" ? `<dt>Vence</dt><dd class="${venc ? "down" : ""}">${fdate(v.vence)}</dd>` : ""}<dt>Facturó</dt><dd>${esc(v.usuario)}</dd>${v.cotizacionId ? `<dt>Origen</dt><dd>Cotización #${store.get("cotizaciones", v.cotizacionId)?.num || "—"}</dd>` : ""}${isExp && v.emb?.booking ? `<dt>Embarque</dt><dd>${esc([v.emb.incoterm, v.emb.puertoDestino, v.emb.booking, v.emb.contenedor].filter(Boolean).join(" · "))}</dd>` : ""}${v.notas ? `<dt>Notas</dt><dd style="font-weight:400">${esc(v.notas)}</dd>` : ""}</dl>
     ${linesTable(v, can("finanzas.ver"))}
     ${can("finanzas.ver") && v.estado !== "Anulada" ? `<p class="small muted" style="text-align:right;margin:6px 0 0">Ganancia bruta: <b>${money(subDOP(v) - costoVenta(v))}</b></p>` : ""}
-    ${v.estado !== "Anulada" ? `<h3 style="margin:18px 0 8px">Pagos</h3>${(v.abonos || []).length ? `<div class="tbl-wrap"><table class="t"><tbody>${v.abonos.map(a => `<tr><td>${fdate(a.fecha)}</td><td>${esc(a.metodo)}</td><td class="n"><b>${money(a.monto, v.moneda)}</b></td></tr>`).join("")}</tbody></table></div>` : `<p class="muted small" style="margin:0">Sin pagos registrados.</p>`}
+    ${notas.length ? `<h3 style="margin:18px 0 8px">Notas de crédito</h3><div class="tbl-wrap"><table class="t"><tbody>${notas.map(n => `<tr class="click" data-nota="${n.id}"><td>NC #${n.num}${n.ncf ? " · " + esc(n.ncf) : ""}</td><td>${fdate(n.fecha)}</td><td>${esc(n.motivo || "")}</td><td class="n"><b>${money(n.total, n.moneda)}</b></td></tr>`).join("")}</tbody></table></div>` : ""}
+    ${v.estado !== "Anulada" ? `<h3 style="margin:18px 0 8px">Pagos</h3>${(v.abonos || []).length ? `<div class="tbl-wrap"><table class="t"><tbody>${v.abonos.map(a => `<tr><td>${fdate(a.fecha)}</td><td>${esc(a.metodo)}</td><td class="muted">${esc(a.usuario || "")}</td><td class="n"><b>${money(a.monto, v.moneda)}</b></td></tr>`).join("")}</tbody></table></div>` : `<p class="muted small" style="margin:0">Sin pagos registrados.</p>`}
     <p style="text-align:right;margin:8px 0 0">Saldo pendiente: <b class="${saldo(v) > 0 ? "down" : "up"}">${money(saldo(v), v.moneda)}</b></p>` : `<div class="note" style="margin-top:14px">${ic("i-alert")}<span>Factura anulada${v.anuladaPor ? " por " + esc(v.anuladaPor) : ""}. Las existencias fueron devueltas al inventario.</span></div>`}`,
-    foot: `${can("anular") && v.estado !== "Anulada" ? `<button class="btn danger" data-anular style="margin-right:auto">Anular</button>` : ""}
+    foot: `${can("anular") && v.estado !== "Anulada" && !notas.length ? `<button class="btn danger" data-anular style="margin-right:auto">Anular</button>` : ""}
+      ${v.estado !== "Anulada" && feat("notas") && can("notas.crear") && devolvible ? `<button class="btn" data-nc>${ic("i-swap")}Nota de crédito</button>` : ""}
       ${v.estado !== "Anulada" && can("ordenes") ? `<button class="btn" data-ot>${ic("i-board")}<span>Orden de trabajo</span></button>` : ""}
-      ${c.telefono ? `<a class="btn" target="_blank" rel="noopener" href="${waLink(c.telefono, `Hola ${c.contacto || c.nombre}, le compartimos la factura #${v.num} de ${store.config.empresa} por ${money(v.total, v.moneda)}.${v.estado === "Pendiente" ? " Vence el " + fdate(v.vence) + "." : ""} ¡Gracias!`)}">${ic("i-wa")}WhatsApp</a>` : ""}
+      ${isExp && v.estado !== "Anulada" ? `<button class="btn" data-emb>${ic("i-globe")}Embarque</button><button class="btn" data-ci>${ic("i-print")}Commercial invoice</button><button class="btn" data-pl>${ic("i-print")}Packing list</button>` : ""}
+      ${c.telefono ? `<a class="btn" target="_blank" rel="noopener" href="${waLink(c.telefono, `Hola ${c.contacto || c.nombre}, le compartimos la factura #${v.num}${v.ncf ? " (NCF " + v.ncf + ")" : ""} de ${store.config.empresa} por ${money(v.total, v.moneda)}.${v.estado === "Pendiente" ? " Vence el " + fdate(v.vence) + "." : ""} ¡Gracias!`)}">${ic("i-wa")}WhatsApp</a>` : ""}
       ${v.estado === "Pendiente" && can("pagos") ? `<button class="btn pri" data-abono>${ic("i-cash")}Registrar pago</button>` : ""}<button class="btn" data-print>${ic("i-print")}Imprimir</button>` });
   m.$("[data-print]").onclick = () => printDoc("venta", v);
   m.$("[data-abono]")?.addEventListener("click", () => { m.close(); abonoForm(v); });
+  m.$("[data-nc]")?.addEventListener("click", () => { m.close(); notaForm(v); });
+  m.$("[data-emb]")?.addEventListener("click", () => { m.close(); embForm(v); });
+  m.$("[data-ci]")?.addEventListener("click", () => printCommercial(v));
+  m.$("[data-pl]")?.addEventListener("click", () => printPacking(v));
+  $$("[data-nota]", m.el).forEach(r => r.onclick = () => { m.close(); notaDetail(store.get("notas", r.dataset.nota)); });
   m.$("[data-ot]")?.addEventListener("click", () => { m.close(); go("ordenes"); setTimeout(() => otForm(null, { clienteId: v.clienteId, titulo: "Despacho factura #" + v.num, ventaId: v.id, lineas: v.lineas.map(l => ({ productoId: l.productoId, nombre: l.nombre, cant: l.cant })) }), 60); });
   m.$("[data-anular]")?.addEventListener("click", async () => {
     if (!await confirmBox(`La factura #${v.num} quedará anulada y sus productos volverán al inventario. Esta acción no se puede deshacer.`, { ok: "Anular factura", danger: true })) return;
-    v.lineas.forEach(l => { const p = producto(l.productoId); if (p) { p.stock = r2(p.stock + l.cant); store.put("productos", p, true); } });
-    v.estado = "Anulada"; v.anuladaPor = S.user.nombre; store.put("ventas", v); m.close(); route(); toast("Factura anulada");
+    try { await moverStock(v.lineas.map(l => ({ id: l.productoId, delta: l.cant })), { negativo: true }); } catch (x) { return toast(x.message, "err"); }
+    v.lineas.forEach(l => devolverLotes(l.lotes, l.cant));
+    v.estado = "Anulada"; v.anuladaPor = S.user.nombre; store.put("ventas", v); audit("Anuló", "Ventas", `Factura #${v.num}${v.ncf ? " · " + v.ncf : ""}`); m.close(); route(); toast("Factura anulada");
   });
+}
+function embForm(v) {
+  const m = modal({ title: "Datos de embarque · Factura #" + v.num, size: "wide", body: embFieldsHTML(v.emb || {}), foot: `<button class="btn" data-close>Cancelar</button><button class="btn pri" data-save>Guardar</button>` });
+  m.$("[data-save]").onclick = () => { v.emb = readEmb(m.el); store.put("ventas", v); audit("Modificó", "Ventas", `Datos de embarque de la factura #${v.num}`); m.close(); toast("Datos de embarque guardados"); ventaDetail(v); };
 }
 function abonoForm(v) {
   const m = modal({ title: "Registrar pago · Factura #" + v.num, size: "narrow", body: `<form class="grid" data-f><p class="muted" style="margin:0">Saldo pendiente: <b>${money(saldo(v), v.moneda)}</b></p>
     <label class="field"><span>Monto (${v.moneda === "USD" ? "US$" : "RD$"})</span><input class="input" type="number" step="0.01" min="0" name="monto" value="${saldo(v)}"></label>
-    <label class="field"><span>Método</span><select class="input" name="metodo"><option>Transferencia</option><option>Efectivo</option><option>Cheque</option><option>Tarjeta</option></select></label>
+    <label class="field"><span>Método</span><select class="input" name="metodo">${["Transferencia", "Efectivo", "Cheque", "Tarjeta"].map(x => `<option>${x}</option>`).join("")}</select></label>
     <label class="field"><span>Fecha</span><input class="input" type="date" name="fecha" value="${today()}"></label></form>`, foot: `<button class="btn" data-close>Cancelar</button><button class="btn pri" data-save>Registrar pago</button>` });
   m.$("[data-save]").onclick = () => {
     const d = formData(m.$("[data-f]")); if (!(d.monto > 0)) return toast("Escribe un monto mayor que cero.", "err");
     if (d.monto > saldo(v) + .01) return toast("El monto supera el saldo pendiente.", "err");
-    v.abonos = [...(v.abonos || []), d]; v.pagado = r2((v.pagado || 0) + d.monto); if (saldo(v) <= .01) v.estado = "Pagada";
-    store.put("ventas", v); m.close(); route(); toast(v.estado === "Pagada" ? "Factura saldada" : "Pago registrado");
+    d.usuario = S.user.nombre; v.abonos = [...(v.abonos || []), d]; v.pagado = r2((v.pagado || 0) + d.monto); if (saldo(v) <= .01) v.estado = "Pagada";
+    store.put("ventas", v); audit("Cobró", "Ventas", `${money(d.monto, v.moneda)} en ${d.metodo} a la factura #${v.num}`); m.close(); route(); toast(v.estado === "Pagada" ? "Factura saldada" : "Pago registrado");
   };
 }
 function compraDetail(c) {
   const p = proveedor(c.proveedorId);
-  const m = modal({ title: "Compra #" + c.num, size: "wide", body: `<div style="display:flex;gap:8px;margin-bottom:12px">${estadoChip(c.estado)}<span class="chip plain">${esc(c.condicion)}</span></div>
+  const m = modal({ title: "Compra #" + c.num, size: "wide", body: `<div style="display:flex;gap:8px;margin-bottom:12px">${estadoChip(c.estado)}<span class="chip plain">${esc(c.condicion)}${c.metodo ? " · " + esc(c.metodo) : ""}</span></div>
     <dl class="dl"><dt>Proveedor</dt><dd>${esc(p.nombre)}</dd><dt>Fecha</dt><dd>${fdate(c.fecha)}</dd><dt>Comprobante</dt><dd>${esc(c.documento || "—")}</dd><dt>Registró</dt><dd>${esc(c.usuario)}</dd>${c.notas ? `<dt>Notas</dt><dd style="font-weight:400">${esc(c.notas)}</dd>` : ""}</dl>${linesTable(c)}`,
     foot: `${can("anular") && c.estado !== "Anulada" ? `<button class="btn danger" data-anular style="margin-right:auto">Anular</button>` : ""}${c.estado === "Pendiente" && can("pagos") ? `<button class="btn pri" data-pagar>${ic("i-cash")}Marcar pagada</button>` : ""}<button class="btn" data-print>${ic("i-print")}Imprimir</button>` });
   m.$("[data-print]").onclick = () => printDoc("compra", c);
-  m.$("[data-pagar]")?.addEventListener("click", () => { c.estado = "Pagada"; c.pagadaEl = today(); store.put("compras", c); m.close(); route(); toast("Compra marcada como pagada"); });
+  m.$("[data-pagar]")?.addEventListener("click", () => { c.estado = "Pagada"; c.pagadaEl = today(); store.put("compras", c); audit("Pagó", "Compras", `Compra #${c.num}`); m.close(); route(); toast("Compra marcada como pagada"); });
   m.$("[data-anular]")?.addEventListener("click", async () => {
-    const falta = c.lineas.find(l => (producto(l.productoId)?.stock ?? 0) < l.cant);
-    if (falta) return toast(`No se puede anular: ya se vendió parte de ${falta.nombre}. Haz un ajuste de inventario.`, "err");
+    const lotUsado = feat("lotes") && c.lineas.some(l => { const lt = store.get("lotes", l.loteId); return lt && lt.disponible < lt.cantidad - 1e-9; });
+    if (lotUsado) return toast("No se puede anular: parte de sus lotes ya se vendió. Haz un ajuste de inventario.", "err");
     if (!await confirmBox(`La compra #${c.num} quedará anulada y se restarán sus productos del inventario.`, { ok: "Anular compra", danger: true })) return;
-    c.lineas.forEach(l => { const pr = producto(l.productoId); pr.stock = r2(pr.stock - l.cant); store.put("productos", pr, true); });
-    c.estado = "Anulada"; store.put("compras", c); m.close(); route(); toast("Compra anulada");
+    try { await moverStock(c.lineas.map(l => ({ id: l.productoId, delta: -l.cant }))); } catch (x) { return toast(x.message.replace("No hay suficiente", "No se puede anular: ya se vendió parte de") , "err"); }
+    c.lineas.forEach(l => { const lt = store.get("lotes", l.loteId); if (lt) { lt.disponible = 0; lt.anulado = true; store.put("lotes", lt, true); } }); store.save();
+    c.estado = "Anulada"; store.put("compras", c); audit("Anuló", "Compras", `Compra #${c.num}`); m.close(); route(); toast("Compra anulada");
   });
+}
+
+/* ---------------- Notas de crédito ---------------- */
+function notaForm(v) {
+  const c = cliente(v.clienteId); const disp = l => r2(l.cant - (l.devuelto || 0));
+  const m = modal({ title: "Nota de crédito · Factura #" + v.num, size: "wide", body: `<form class="grid" data-f>
+    <p class="muted" style="margin:0">Indica cuánto devuelve el cliente de cada producto. La nota rebaja el saldo pendiente de la factura; si ya estaba pagada, el excedente se reembolsa.</p>
+    <div class="tbl-wrap"><table class="t"><thead><tr><th>Producto</th><th class="r">Facturado</th><th class="r">Puede devolver</th><th class="r" style="width:150px">Devuelve</th><th class="r">Importe</th></tr></thead><tbody>
+    ${v.lineas.map((l, i) => `<tr><td><b>${esc(l.nombre)}</b><br><small class="muted">${esc(l.unidad || "")}</small></td><td class="n">${qty(l.cant)}</td><td class="n">${qty(disp(l))}</td><td class="n"><input class="input" style="height:36px;text-align:right" type="number" min="0" max="${disp(l)}" step="any" data-dv="${i}" value="0" ${disp(l) <= 0 ? "disabled" : ""}></td><td class="n" data-imp="${i}">${money(0, v.moneda)}</td></tr>`).join("")}</tbody></table></div>
+    <div class="grid g2"><label class="field"><span>Motivo</span><select class="input" name="motivo"><option>Producto dañado o con baja calidad</option><option>Devolución del cliente</option><option>Error en la factura</option><option>Descuento posterior</option><option>Faltante en la entrega</option></select></label>
+    <div class="field"><span>¿Qué pasa con el producto?</span><div class="seg" data-dest><button type="button" class="on" data-v="1">Vuelve al inventario</button><button type="button" data-v="0">Se pierde (merma)</button></div></div>
+    <label class="field" data-met><span>Si hay reembolso, ¿cómo se devuelve?</span><select class="input" name="metodo">${["Efectivo", "Transferencia", "Tarjeta", "Cheque"].map(x => `<option>${x}</option>`).join("")}</select></label>
+    <label class="field"><span>Fecha</span><input class="input" type="date" name="fecha" value="${today()}"></label></div>
+    <div class="totals" style="max-width:340px;margin-left:auto" data-tot></div></form>`, foot: `<button class="btn" data-close>Cancelar</button><button class="btn hot" data-save>Emitir nota de crédito</button>` });
+  let reingresa = true; const F = m.$("[data-f]");
+  const calc = () => { const lin = v.lineas.map((l, i) => ({ l, q: Math.min(disp(l), Math.max(0, +F.querySelector(`[data-dv="${i}"]`).value || 0)) })); const sub = r2(lin.reduce((a, x) => a + x.q * x.l.precio, 0)); const itb = r2(sub * (+v.itbisPct || 0) / 100); const tot = r2(sub + itb); const aSaldo = Math.min(Math.max(0, saldo(v)), tot); const reemb = r2(tot - aSaldo);
+    lin.forEach((x, i) => F.querySelector(`[data-imp="${i}"]`).textContent = money(x.q * x.l.precio, v.moneda));
+    m.$("[data-tot]").innerHTML = `<div><span class="muted">Subtotal</span><span>${money(sub, v.moneda)}</span></div><div><span class="muted">ITBIS</span><span>${money(itb, v.moneda)}</span></div><div class="grand"><span>Total</span><span>${money(tot, v.moneda)}</span></div><div class="small muted"><span>Rebaja del saldo</span><span>${money(aSaldo, v.moneda)}</span></div><div class="small ${reemb ? "down" : "muted"}"><span>Reembolso al cliente</span><span>${money(reemb, v.moneda)}</span></div>`;
+    m.$("[data-met]").style.display = reemb > 0 ? "" : "none"; return { lin, sub, itb, tot, aSaldo, reemb }; };
+  F.addEventListener("input", calc); calc();
+  m.$("[data-dest]").onclick = e => { const b = e.target.closest("button"); if (!b) return; reingresa = b.dataset.v === "1"; $$("[data-dest] button", m.el).forEach(x => x.classList.toggle("on", x === b)); };
+  m.$("[data-save]").onclick = async () => {
+    const r = calc(); const lin = r.lin.filter(x => x.q > 0); if (!lin.length) return toast("Indica al menos una cantidad a devolver.", "err");
+    const btn = m.$("[data-save]"); btn.disabled = true;
+    try {
+      if (reingresa) await moverStock(lin.map(x => ({ id: x.l.productoId, delta: x.q })), { negativo: true });
+      const n = { num: store.next("notas", 1), fecha: F.fecha.value || today(), ventaId: v.id, ventaNum: v.num, clienteId: v.clienteId, tipo: v.tipo, moneda: v.moneda, tasa: v.tasa, itbisPct: v.itbisPct,
+        lineas: lin.map(x => ({ productoId: x.l.productoId, nombre: x.l.nombre, unidad: x.l.unidad, pesoKg: x.l.pesoKg, cant: x.q, precio: x.l.precio, costo: x.l.costo || 0 })),
+        subtotal: r.sub, itbis: r.itb, total: r.tot, aplicadoSaldo: r.aSaldo, reembolso: r.reemb, metodo: r.reemb ? F.metodo.value : "", motivo: F.motivo.value, reingresa, ncfModificado: v.ncf || "", estado: "Aplicada", usuario: S.user.nombre };
+      if (feat("ncf") && v.ncf) { const t = await tomarNCF(toE("B04")); n.ncf = t.ncf; n.ncfVence = t.vence; }
+      lin.forEach(x => { x.l.devuelto = r2((x.l.devuelto || 0) + x.q); if (reingresa) devolverLotes(x.l.lotes, x.q); });
+      v.creditos = r2((v.creditos || 0) + r.aSaldo); v.devuelto = r2((v.devuelto || 0) + r.tot); if (v.estado === "Pendiente" && saldo(v) <= .01) v.estado = "Pagada";
+      store.put("notas", n); store.put("ventas", v);
+      audit("Emitió", "Notas de crédito", `NC #${n.num}${n.ncf ? " · " + n.ncf : ""} a la factura #${v.num} por ${money(n.total, n.moneda)}`);
+      m.close(); toast(`Nota de crédito #${n.num} emitida`); notaDetail(n);
+    } catch (x) { toast(x.message, "err"); btn.disabled = false; }
+  };
+}
+function notaDetail(n) {
+  const c = cliente(n.clienteId);
+  const m = modal({ title: "Nota de crédito #" + n.num, size: "wide", body: `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">${estadoChip(n.estado)}<span class="chip plain">${n.reingresa ? "Volvió al inventario" : "Merma"}</span>${n.ncf ? `<span class="chip plain">NCF ${esc(n.ncf)}</span>` : ""}</div>
+    <dl class="dl"><dt>Cliente</dt><dd>${esc(c.nombre)}</dd><dt>Factura</dt><dd>#${n.ventaNum}${n.ncfModificado ? " · NCF " + esc(n.ncfModificado) : ""}</dd><dt>Fecha</dt><dd>${fdate(n.fecha)}</dd><dt>Motivo</dt><dd>${esc(n.motivo)}</dd><dt>Aplicación</dt><dd>${money(n.aplicadoSaldo, n.moneda)} al saldo${n.reembolso ? ` · ${money(n.reembolso, n.moneda)} reembolsado en ${esc(n.metodo)}` : ""}</dd><dt>Emitió</dt><dd>${esc(n.usuario)}</dd></dl>${linesTable(n)}`,
+    foot: `${can("anular") && n.estado !== "Anulada" ? `<button class="btn danger" data-anular style="margin-right:auto">Anular</button>` : ""}<button class="btn" data-fac>Ver factura</button><button class="btn" data-print>${ic("i-print")}Imprimir</button>` });
+  m.$("[data-print]").onclick = () => printDoc("nota", n);
+  m.$("[data-fac]").onclick = () => { const v = store.get("ventas", n.ventaId); if (v) { m.close(); ventaDetail(v); } };
+  m.$("[data-anular]")?.addEventListener("click", async () => {
+    if (!await confirmBox(`La nota #${n.num} quedará anulada: el saldo de la factura vuelve a como estaba${n.reingresa ? " y se retira del inventario lo devuelto" : ""}.`, { ok: "Anular nota", danger: true })) return;
+    try { if (n.reingresa) await moverStock(n.lineas.map(l => ({ id: l.productoId, delta: -l.cant }))); } catch (x) { return toast(x.message, "err"); }
+    const v = store.get("ventas", n.ventaId);
+    if (v) { n.lineas.forEach(nl => { const l = v.lineas.find(x => x.productoId === nl.productoId && (x.devuelto || 0) >= nl.cant - 1e-9); if (l) { l.devuelto = r2(l.devuelto - nl.cant); if (n.reingresa) consumirLotes(l.productoId, nl.cant); } }); v.creditos = r2((v.creditos || 0) - n.aplicadoSaldo); v.devuelto = r2((v.devuelto || 0) - n.total); if (saldo(v) > .01 && v.estado === "Pagada") v.estado = "Pendiente"; store.put("ventas", v); }
+    n.estado = "Anulada"; store.put("notas", n); audit("Anuló", "Notas de crédito", `NC #${n.num}`); m.close(); route(); toast("Nota anulada");
+  });
+}
+
+/* ---------------- Documentos de exportación ---------------- */
+function printCommercial(v) {
+  const c = store.config, cl = cliente(v.clienteId), e = v.emb || {}; const kg = kgOf(v.lineas), gk = brutoOf(v.lineas);
+  const usd = n => money(n, v.moneda);
+  $("#print").innerHTML = `<div class="ph"><div>${c.logo ? `<img src="${c.logo}" alt=""><br>` : `<div style="width:60px">${kplLogo(true)}</div>`}<b style="font-size:13pt">${esc(c.empresa)}</b><br>RNC ${esc(c.rnc)}<br>${esc(c.direccion)}<br>${esc(c.telefono)} · ${esc(c.email)}</div>
+    <div style="text-align:right"><h1>COMMERCIAL INVOICE</h1><b>Invoice No. ${v.num}</b>${v.ncf ? `<br>NCF: ${esc(v.ncf)}` : ""}<br>Date: ${v.fecha}<br>Country of origin: Dominican Republic</div></div>
+    <div class="meta"><div><b>Sold to / Consignee</b><br>${esc(e.consignatario || cl.nombre)}<br>${cl.rnc ? "Tax ID: " + esc(cl.rnc) + "<br>" : ""}${esc([cl.ciudad, cl.pais].filter(Boolean).join(", "))}<br>${esc(cl.telefono || "")} ${esc(cl.email || "")}</div>
+    <div><b>Terms of sale:</b> ${esc(e.incoterm || "—")} ${esc(e.puertoOrigen || "")}<br><b>Port of loading:</b> ${esc(e.puertoOrigen || "—")}<br><b>Port of discharge:</b> ${esc(e.puertoDestino || "—")}${e.paisDestino ? ", " + esc(e.paisDestino) : ""}<br><b>Carrier:</b> ${esc([e.transporte === "Aéreo" ? "Air" : e.transporte === "Terrestre" ? "Land" : "Sea", e.naviera].filter(Boolean).join(" · "))}<br><b>Booking / AWB:</b> ${esc(e.booking || "—")}<br><b>Container / Seal:</b> ${esc([e.contenedor, e.sello].filter(Boolean).join(" / ") || "—")}${e.fechaEmbarque ? `<br><b>Shipment date:</b> ${e.fechaEmbarque}` : ""}${e.temperatura ? `<br><b>Temperature:</b> ${esc(e.temperatura)}` : ""}</div></div>
+    <table><thead><tr><th>Description</th><th>HS code</th><th class="r">Qty</th><th>Unit</th><th class="r">Net kg</th><th class="r">Unit price</th><th class="r">Amount</th></tr></thead><tbody>${v.lineas.map(l => `<tr><td>${esc(l.nombre)}</td><td>${esc(l.hs || producto(l.productoId)?.hs || "")}</td><td class="r">${qty(l.cant)}</td><td>${esc(l.unidad || "")}</td><td class="r">${qty(r2(l.cant * pesoDe(l)))}</td><td class="r">${usd(l.precio)}</td><td class="r">${usd(l.cant * l.precio)}</td></tr>`).join("")}</tbody></table>
+    <div class="tot"><div><span>Subtotal</span><span>${usd(v.subtotal)}</span></div><div><span>Tax</span><span>${usd(v.itbis)}</span></div><div class="g"><span>TOTAL ${esc(e.incoterm || "")}</span><span>${usd(v.total)}</span></div></div>
+    <p style="font-size:9.5pt"><b>Total packages:</b> ${qty(v.lineas.reduce((a, l) => a + l.cant, 0))} · <b>Net weight:</b> ${qty(kg)} kg (${qty(r2(kg / LB))} lb) · <b>Gross weight:</b> ${qty(gk)} kg (${qty(r2(gk / LB))} lb)</p>
+    <p style="font-size:9pt;color:#555">We certify that this invoice is true and correct and that the origin of the goods is the Dominican Republic.</p>
+    <div class="foot"><span>${esc(c.empresa)}</span><span class="sig">Authorized signature</span></div>`;
+  setTimeout(() => window.print(), 50);
+}
+function printPacking(v) {
+  const c = store.config, cl = cliente(v.clienteId), e = v.emb || {}; const kg = kgOf(v.lineas), gk = brutoOf(v.lineas);
+  $("#print").innerHTML = `<div class="ph"><div>${c.logo ? `<img src="${c.logo}" alt=""><br>` : `<div style="width:60px">${kplLogo(true)}</div>`}<b style="font-size:13pt">${esc(c.empresa)}</b><br>${esc(c.direccion)}</div>
+    <div style="text-align:right"><h1>PACKING LIST</h1><b>Invoice No. ${v.num}</b><br>Date: ${v.fecha}${e.booking ? `<br>Booking / AWB: ${esc(e.booking)}` : ""}${e.contenedor ? `<br>Container: ${esc(e.contenedor)}${e.sello ? " · Seal " + esc(e.sello) : ""}` : ""}</div></div>
+    <div class="meta"><div><b>Consignee</b><br>${esc(e.consignatario || cl.nombre)}<br>${esc([cl.ciudad, cl.pais].filter(Boolean).join(", "))}</div><div><b>From:</b> ${esc(e.puertoOrigen || "—")}<br><b>To:</b> ${esc(e.puertoDestino || "—")}${e.paisDestino ? ", " + esc(e.paisDestino) : ""}${e.temperatura ? `<br><b>Temperature:</b> ${esc(e.temperatura)}` : ""}<br><b>Incoterm:</b> ${esc(e.incoterm || "—")}</div></div>
+    <table><thead><tr><th>Description</th><th>Lot / Farm</th><th class="r">Packages</th><th>Unit</th><th class="r">Net kg</th><th class="r">Gross kg</th></tr></thead><tbody>${v.lineas.map(l => { const gb = +(l.pesoBrutoKg ?? producto(l.productoId)?.pesoBrutoKg) || pesoDe(l); const lots = (l.lotes || []).map(x => { const lt = store.get("lotes", x.id); return `${x.codigo}${lt?.finca ? " (" + lt.finca + ")" : ""}: ${qty(x.cant)}`; }).join("<br>"); return `<tr><td>${esc(l.nombre)}</td><td style="font-size:8.5pt">${lots || "—"}</td><td class="r">${qty(l.cant)}</td><td>${esc(l.unidad || "")}</td><td class="r">${qty(r2(l.cant * pesoDe(l)))}</td><td class="r">${qty(r2(l.cant * gb))}</td></tr>`; }).join("")}</tbody>
+    <tfoot><tr><td style="font-weight:800">Total</td><td></td><td class="r" style="font-weight:800">${qty(v.lineas.reduce((a, l) => a + l.cant, 0))}</td><td></td><td class="r" style="font-weight:800">${qty(kg)}</td><td class="r" style="font-weight:800">${qty(gk)}</td></tr></tfoot></table>
+    <p style="font-size:9.5pt">Net weight ${qty(kg)} kg (${qty(r2(kg / LB))} lb) · Gross weight ${qty(gk)} kg (${qty(r2(gk / LB))} lb)</p>
+    <div class="foot"><span>${esc(c.empresa)} · Country of origin: Dominican Republic</span><span class="sig">Packed by</span></div>`;
+  setTimeout(() => window.print(), 50);
+}
+
+/* ---------------- Estado de cuenta ---------------- */
+function estadoCuenta(cl) {
+  const mon = cl.tipo === "Exportación" ? "USD" : "DOP";
+  const conv = (amt, doc) => { const dm = doc.moneda || "DOP"; if (dm === mon) return amt; const t = doc.tasa || store.config.tasa; return mon === "USD" ? amt / t : amt * t; };
+  const build = (desde, hasta) => {
+    const mv = [];
+    store.all("ventas").filter(v => v.clienteId === cl.id && v.estado !== "Anulada").forEach(v => { mv.push({ f: v.fecha, n: v.num, doc: "Factura #" + v.num + (v.ncf ? " · " + v.ncf : ""), desc: v.condicion, cargo: conv(v.total, v), abono: 0 }); (v.abonos || []).forEach(a => mv.push({ f: a.fecha, n: v.num + .5, doc: "Pago a factura #" + v.num, desc: a.metodo, cargo: 0, abono: conv(a.monto, v) })); });
+    store.all("notas").filter(n => n.clienteId === cl.id && n.estado !== "Anulada").forEach(n => { mv.push({ f: n.fecha, n: n.ventaNum + .7, doc: "Nota de crédito #" + n.num + (n.ncf ? " · " + n.ncf : ""), desc: n.motivo, cargo: 0, abono: conv(n.aplicadoSaldo, n) }); });
+    mv.sort((a, b) => a.f.localeCompare(b.f) || a.n - b.n);
+    const prev = mv.filter(m => m.f < desde).reduce((a, m) => a + m.cargo - m.abono, 0);
+    let s = prev; const rows = mv.filter(m => inRange(m.f, desde, hasta)).map(m => { s += m.cargo - m.abono; return { ...m, saldo: s }; });
+    return { prev: r2(prev), rows, saldo: r2(s), cargos: r2(rows.reduce((a, m) => a + m.cargo, 0)), abonos: r2(rows.reduce((a, m) => a + m.abono, 0)) };
+  };
+  let desde = addDays(today(), -90), hasta = today(), E;
+  const toRep = () => ({ tab: "estado", file: "estado-cuenta-" + norm(cl.nombre).replace(/\W+/g, "-"), heading: "Estado de cuenta", title: "Estado de cuenta", sheet: "Estado de cuenta", period: `${cl.nombre}${cl.rnc ? " · " + cl.rnc : ""} · del ${fdate(desde)} al ${fdate(hasta)}`, note: `Montos en ${mon === "USD" ? "dólares" : "pesos"}.`,
+    kpis: [["Saldo anterior", money(E.prev, mon)], ["Facturado", money(E.cargos, mon)], ["Pagos y créditos", money(E.abonos, mon)], ["Saldo actual", money(E.saldo, mon)]],
+    cols: [{ h: "Fecha" }, { h: "Documento" }, { h: "Detalle" }, { h: "Cargo", r: 1 }, { h: "Abono", r: 1 }, { h: "Saldo", r: 1 }],
+    rows: [["", "Saldo anterior", "", "", "", money(E.prev, mon)], ...E.rows.map(m => [fdate(m.f), m.doc, m.desc || "", m.cargo ? money(m.cargo, mon) : "", m.abono ? money(m.abono, mon) : "", money(m.saldo, mon)])],
+    xrows: [["", "Saldo anterior", "", "", "", E.prev], ...E.rows.map(m => [m.f, m.doc, m.desc || "", r2(m.cargo) || "", r2(m.abono) || "", r2(m.saldo)])], foot: ["", "Totales", "", money(E.cargos, mon), money(E.abonos, mon), money(E.saldo, mon)] });
+  const m = modal({ title: "Estado de cuenta · " + cl.nombre, size: "wide", body: `<div class="grid g3 keep2" style="align-items:end;margin-bottom:12px"><label class="field"><span>Desde</span><input class="input" type="date" data-d value="${desde}"></label><label class="field"><span>Hasta</span><input class="input" type="date" data-h value="${hasta}"></label></div><div data-o></div>`,
+    foot: `${cl.telefono ? `<a class="btn" data-wa target="_blank" rel="noopener">${ic("i-wa")}WhatsApp</a>` : ""}<button class="btn" data-x>${ic("i-grid")}Excel</button><button class="btn" data-pdf>${ic("i-quote")}PDF</button><button class="btn pri" data-p>${ic("i-print")}Imprimir</button>` });
+  const draw = () => { E = build(desde, hasta); const R = toRep(); m.$("[data-o]").innerHTML = `<div class="kpis">${R.kpis.map((k, i) => `<div class="kpi ${i === 3 ? "feature" : ""}"><span class="lbl">${k[0]}</span><span class="val">${k[1]}</span></div>`).join("")}</div>${reportTableHTML(R, R.rows)}`;
+    const wa = m.$("[data-wa]"); if (wa) wa.href = waLink(cl.telefono, `Hola ${cl.contacto || cl.nombre}, le compartimos su estado de cuenta con ${store.config.empresa} al ${fdate(hasta)}: saldo pendiente ${money(E.saldo, mon)}. Quedamos atentos.`); };
+  m.$("[data-d]").onchange = e => { desde = e.target.value; draw(); }; m.$("[data-h]").onchange = e => { hasta = e.target.value; draw(); };
+  m.$("[data-p]").onclick = () => printReport(toRep()); m.$("[data-pdf]").onclick = () => pdfReport(toRep()); m.$("[data-x]").onclick = () => excelReport(toRep());
+  draw();
 }
 function cotDetail(q) {
   const c = cliente(q.clienteId); const vencida = q.estado === "Pendiente" && q.valida && q.valida < today();
@@ -1695,24 +2029,24 @@ function cotDetail(q) {
     <button class="btn" data-print>${ic("i-print")}Imprimir</button>
     ${["Pendiente", "Aceptada"].includes(q.estado) && can("venta-nueva") ? `<button class="btn hot" data-fact>${ic("i-swap")}Convertir en factura</button>` : ""}` });
   m.$("[data-print]").onclick = () => printDoc("cotizacion", q);
-  $$("[data-st]", m.el).forEach(b => b.onclick = () => { q.estado = b.dataset.st; store.put("cotizaciones", q); m.close(); route(); toast("Cotización marcada como " + q.estado.toLowerCase()); });
+  $$("[data-st]", m.el).forEach(b => b.onclick = () => { q.estado = b.dataset.st; store.put("cotizaciones", q); audit("Marcó", "Cotizaciones", `#${q.num} como ${q.estado.toLowerCase()}`); m.close(); route(); toast("Cotización marcada como " + q.estado.toLowerCase()); });
   m.$("[data-edit]")?.addEventListener("click", () => { m.close(); go("cotizacion-nueva", { edit: q.id }); });
   m.$("[data-fact]")?.addEventListener("click", () => { m.close(); go("venta-nueva", { fromCot: q.id }); });
-  m.$("[data-del]")?.addEventListener("click", async () => { if (await confirmBox(`Se eliminará la cotización #${q.num}.`, { ok: "Eliminar", danger: true })) { store.del("cotizaciones", q.id); m.close(); route(); toast("Cotización eliminada"); } });
+  m.$("[data-del]")?.addEventListener("click", async () => { if (await confirmBox(`Se eliminará la cotización #${q.num}.`, { ok: "Eliminar", danger: true })) { store.del("cotizaciones", q.id); audit("Eliminó", "Cotizaciones", `#${q.num}`); m.close(); route(); toast("Cotización eliminada"); } });
 }
 
 /* ---------------- Impresión ---------------- */
 function printDoc(kind, d) {
-  const c = store.config; const isC = kind === "compra"; const party = isC ? proveedor(d.proveedorId) : cliente(d.clienteId);
-  const title = { venta: "Factura", cotizacion: "Cotización", compra: "Orden de compra", orden: "Orden de trabajo" }[kind]; const cur = d.moneda || "DOP";
+  const c = store.config; const isC = kind === "compra"; const party = isC ? proveedor(d.proveedorId) : cliente(d.clienteId); d = { ...d, lineas: d.lineas || [] };
+  const title = { venta: d.ncf ? (d.ncf.startsWith("B01") || d.ncf.startsWith("E31") ? "Factura de crédito fiscal" : d.ncf.startsWith("B16") || d.ncf.startsWith("E46") ? "Factura de exportación" : "Factura de consumo") : "Factura", cotizacion: "Cotización", compra: "Orden de compra", orden: "Orden de trabajo", nota: "Nota de crédito" }[kind]; const cur = d.moneda || "DOP";
   const body = kind === "orden" ? `<table><thead><tr><th>Producto</th><th class="r">Cantidad</th><th>Listo</th></tr></thead><tbody>${d.lineas.map(l => `<tr><td>${esc(l.nombre)}</td><td class="r">${qty(l.cant)}</td><td>☐</td></tr>`).join("")}</tbody></table>`
-    : `<table><thead><tr><th>Descripción</th><th class="r">Cant.</th><th class="r">Precio</th><th class="r">Total</th></tr></thead><tbody>${d.lineas.map(l => `<tr><td>${esc(l.nombre)} <span style="color:#666">· ${esc(l.unidad || "")}</span></td><td class="r">${qty(l.cant)}</td><td class="r">${money(l.precio, cur)}</td><td class="r">${money(l.cant * l.precio, cur)}</td></tr>`).join("")}</tbody></table>
+    : `<table><thead><tr><th>Descripción</th><th class="r">Cant.</th><th class="r">Precio</th><th class="r">Total</th></tr></thead><tbody>${d.lineas.map(l => `<tr><td>${esc(l.nombre)} <span style="color:#666">· ${esc(l.unidad || "")}</span></td><td class="r">${lineQty(l)}</td><td class="r">${money(uvPrice(l), cur)}</td><td class="r">${money(l.cant * l.precio, cur)}</td></tr>`).join("")}</tbody></table>
       <div class="tot"><div><span>Subtotal</span><span>${money(d.subtotal, cur)}</span></div><div><span>${+d.itbisPct ? "ITBIS " + d.itbisPct + "%" : "Exento de ITBIS"}</span><span>${money(d.itbis, cur)}</span></div><div class="g"><span>Total</span><span>${money(d.total, cur)}</span></div>${cur === "USD" ? `<div style="font-size:9pt;color:#555"><span>Tasa ${d.tasa}</span><span>${money(d.total * d.tasa)}</span></div>` : ""}</div>`;
   $("#print").innerHTML = `<div class="ph"><div>${c.logo ? `<img src="${c.logo}" alt=""><br>` : `<div style="width:64px">${kplLogo(true)}</div>`}<b style="font-size:14pt">${esc(c.empresa)}</b><br>RNC ${esc(c.rnc)}<br>${esc(c.direccion)}<br>${esc(c.telefono)} · ${esc(c.email)}</div>
-    <div style="text-align:right"><h1>${title}</h1><b>No. ${d.num}</b><br>Fecha: ${fdate(d.fecha)}${d.documento ? `<br>NCF: ${esc(d.documento)}` : ""}${kind === "cotizacion" ? `<br>Válida hasta: ${fdate(d.valida)}` : ""}${d.condicion === "Crédito" && d.vence ? `<br>Vence: ${fdate(d.vence)}` : ""}${kind === "orden" ? `<br>Entrega: ${fdate(d.entrega)}<br>Estado: ${esc(d.estado)}` : ""}</div></div>
+    <div style="text-align:right"><h1>${title}</h1><b>No. ${d.num}</b><br>Fecha: ${fdate(d.fecha)}${d.ncf ? `<br><b>NCF: ${esc(d.ncf)}</b>${d.ncfVence ? `<br>Válido hasta: ${fdate(d.ncfVence)}` : ""}` : d.documento ? `<br>NCF: ${esc(d.documento)}` : ""}${kind === "nota" ? `<br>Afecta factura #${d.ventaNum}${d.ncfModificado ? `<br>NCF modificado: ${esc(d.ncfModificado)}` : ""}` : ""}${kind === "cotizacion" ? `<br>Válida hasta: ${fdate(d.valida)}` : ""}${d.condicion === "Crédito" && d.vence ? `<br>Vence: ${fdate(d.vence)}` : ""}${kind === "orden" ? `<br>Entrega: ${fdate(d.entrega)}<br>Estado: ${esc(d.estado)}` : ""}</div></div>
     <div class="meta"><div><b>${isC ? "Proveedor" : "Cliente"}</b><br>${esc(party.nombre)}<br>${party.rnc ? "RNC/Tax ID: " + esc(party.rnc) + "<br>" : ""}${esc([party.ciudad, party.pais].filter(Boolean).join(", "))}<br>${esc(party.telefono || "")}</div>
     <div>${d.tipo ? `<b>Tipo:</b> ${esc(d.tipo)}<br>` : ""}${d.condicion ? `<b>Condición:</b> ${esc(d.condicion)}<br>` : ""}${kind === "orden" ? `<b>Trabajo:</b> ${esc(d.titulo)}<br><b>Responsable:</b> ${esc(d.responsable || "")}<br><b>Prioridad:</b> ${esc(d.prioridad)}<br>` : ""}<b>Atendido por:</b> ${esc(d.usuario || S.user.nombre)}</div></div>
-    ${body}${d.notas ? `<p><b>Notas:</b> ${esc(d.notas)}</p>` : ""}
+    ${body}${kind === "nota" ? `<p><b>Motivo:</b> ${esc(d.motivo)} · ${d.reingresa ? "Mercancía devuelta al inventario" : "Mercancía dada de baja"}${d.reembolso ? ` · Reembolso ${money(d.reembolso, d.moneda)} en ${esc(d.metodo)}` : ""}</p>` : ""}${d.notas ? `<p><b>Notas:</b> ${esc(d.notas)}</p>` : ""}
     <div class="foot"><span>${kind === "venta" ? esc(c.pieFactura) : kind === "cotizacion" ? "Precios sujetos a disponibilidad de cosecha y a la vigencia indicada." : ""}${d.estado === "Anulada" ? "<br><b style='color:#D4271F'>DOCUMENTO ANULADO</b>" : ""}</span><span class="sig">${kind === "compra" ? "Recibido por" : kind === "orden" ? "Despachado por" : "Firma autorizada"}</span></div>`;
   setTimeout(() => window.print(), 50);
 }
@@ -1735,7 +2069,7 @@ VIEWS.ordenes = el => {
         <span class="tiny muted">${o.lineas.slice(0, 2).map(l => qty(l.cant) + " × " + esc(l.nombre)).join("<br>")}${o.lineas.length > 2 ? `<br>y ${o.lineas.length - 2} más` : ""}</span>
         <div class="f"><span class="${late ? "late" : "muted"}">${late ? "Atrasada · " : ""}${fdate(o.entrega)}</span><span style="display:flex;gap:2px">${si > 0 ? `<button class="btn ghost sm icon" data-mv="-1" aria-label="Mover a la etapa anterior">‹</button>` : ""}${si < STAGES.length - 1 ? `<button class="btn ghost sm icon" data-mv="1" aria-label="Mover a la siguiente etapa">›</button>` : ""}</span></div></article>`; }).join("") || `<p class="tiny muted" style="text-align:center;margin:20px 0">Sin órdenes</p>`}</section>`; }).join("");
   };
-  const move = (o, estado) => { if (!o || o.estado === estado) return; o.estado = estado; if (estado === "Despachada") o.despachada = today(); store.put("ordenes", o); draw(); updateBadges(); toast(`OT-${o.num} → ${STAGES.find(s => s[0] === estado)[1]}`); };
+  const move = (o, estado) => { if (!o || o.estado === estado) return; o.estado = estado; if (estado === "Despachada") o.despachada = today(); store.put("ordenes", o); audit("Movió", "Órdenes de trabajo", `OT-${o.num} → ${estado}`); draw(); updateBadges(); toast(`OT-${o.num} → ${STAGES.find(s => s[0] === estado)[1]}`); };
   const K = $("[data-k]", el); let dragId = null;
   K.addEventListener("dragstart", e => { const c = e.target.closest(".kcard"); if (!c) return; dragId = c.dataset.id; c.classList.add("dragging"); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", dragId); });
   K.addEventListener("dragend", e => { e.target.closest(".kcard")?.classList.remove("dragging"); $$(".kcol", K).forEach(c => c.classList.remove("over")); });
@@ -1771,13 +2105,13 @@ function otForm(o, pre) {
   rows.addEventListener("click", e => { if (e.target.closest("[data-rmrow]")) { e.target.closest("[data-row]").remove(); if (!rows.children.length) rows.insertAdjacentHTML("beforeend", lineRow()); } });
   const collect = () => $$("[data-row]", rows).map(r => ({ productoId: $("[data-lp]", r).value, cant: +$("[data-lc]", r).value })).filter(l => l.productoId && l.cant > 0).map(l => ({ ...l, nombre: producto(l.productoId).nombre }));
   m.$("[data-print]")?.addEventListener("click", () => printDoc("orden", { ...o, ...formData(m.$("[data-f]")), lineas: collect() }));
-  m.$("[data-del]")?.addEventListener("click", async () => { if (await confirmBox(`Se eliminará la OT-${o.num}.`, { ok: "Eliminar", danger: true })) { store.del("ordenes", o.id); m.close(); route(); toast("Orden eliminada"); } });
+  m.$("[data-del]")?.addEventListener("click", async () => { if (await confirmBox(`Se eliminará la OT-${o.num}.`, { ok: "Eliminar", danger: true })) { store.del("ordenes", o.id); audit("Eliminó", "Órdenes de trabajo", `OT-${o.num}`); m.close(); route(); toast("Orden eliminada"); } });
   m.$("[data-save]").onclick = () => {
     const F = m.$("[data-f]"); if (!requireFields(F, ["titulo", "clienteId", "entrega"])) return;
     const d = formData(F); const saved = { ...o, ...d, lineas: collect() };
     if (nuevo) saved.num = store.next("ordenes", 101);
     if (d.estado === "Despachada" && o.estado !== "Despachada") saved.despachada = today();
-    store.put("ordenes", saved); m.close(); route(); toast(nuevo ? `OT-${saved.num} creada` : "Orden actualizada");
+    store.put("ordenes", saved); audit(nuevo ? "Creó" : "Modificó", "Órdenes de trabajo", `OT-${saved.num} · ${saved.titulo}`); m.close(); route(); toast(nuevo ? `OT-${saved.num} creada` : "Orden actualizada");
   };
 }
 
@@ -1827,24 +2161,195 @@ function presForm(p, done) {
   m.$("[data-save]").onclick = () => {
     p.metaVentas = +m.$("[data-meta]").value || 0;
     p.partidas = $$("[data-row]", m.el).map(r => ({ categoria: $("[data-c]", r).value.trim(), monto: +$("[data-m]", r).value || 0 })).filter(x => x.categoria);
-    store.put("presupuestos", p); m.close(); done(); toast("Presupuesto guardado");
+    store.put("presupuestos", p); audit("Modificó", "Presupuesto", mesLargo(p.mes)); m.close(); done(); toast("Presupuesto guardado");
   };
 }
 function gastoForm(g, cats, done) {
   const nuevo = !g; g = g || { fecha: today(), categoria: cats[0] || "", descripcion: "", monto: "" };
   const m = modal({ title: nuevo ? "Registrar gasto" : "Editar gasto", size: "narrow", body: `<form class="grid" data-f><label class="field"><span>Categoría</span><input class="input" name="categoria" list="dl-gc" value="${esc(g.categoria)}"><datalist id="dl-gc">${[...new Set([...cats, "Nómina", "Flete y exportación", "Combustible", "Empaque y etiquetas", "Servicios y oficina", "Mantenimiento"])].map(c => `<option value="${esc(c)}">`).join("")}</datalist></label>
     <label class="field"><span>Descripción</span><input class="input" name="descripcion" value="${esc(g.descripcion)}"></label>
-    <div class="grid g2"><label class="field"><span>Monto (RD$)</span><input class="input" type="number" step="0.01" min="0" name="monto" value="${g.monto}"></label><label class="field"><span>Fecha</span><input class="input" type="date" name="fecha" value="${g.fecha}"></label></div></form>`,
+    <div class="grid g2"><label class="field"><span>Monto (RD$)</span><input class="input" type="number" step="0.01" min="0" name="monto" value="${g.monto}"></label><label class="field"><span>Fecha</span><input class="input" type="date" name="fecha" value="${g.fecha}"></label></div>
+    <label class="field"><span>Pagado con</span><select class="input" name="metodo">${PAGOS.map(x => `<option ${(g.metodo || "Efectivo") === x ? "selected" : ""}>${x}</option>`).join("")}</select></label>
+    ${feat("ncf") ? `<details ${g.ncf ? "open" : ""}><summary class="small" style="cursor:pointer;font-weight:600">Comprobante fiscal (para el 606)</summary><div class="grid" style="margin-top:10px"><div class="grid g2"><label class="field"><span>RNC del suplidor</span><input class="input" name="rnc" value="${esc(g.rnc || "")}"></label><label class="field"><span>NCF</span><input class="input" name="ncf" value="${esc(g.ncf || "")}" placeholder="B0100000000"></label></div><label class="field"><span>Tipo de gasto (606)</span><select class="input" name="tipo606">${TIPOS_606.map(([k, l]) => `<option value="${k}" ${(g.tipo606 || "02") === k ? "selected" : ""}>${k} · ${l}</option>`).join("")}</select></label><label class="field"><span>ITBIS incluido (RD$)</span><input class="input" type="number" step="0.01" min="0" name="itbis" value="${g.itbis || ""}"></label></div></details>` : ""}</form>`,
     foot: `${!nuevo ? `<button class="btn danger" data-del style="margin-right:auto">${ic("i-trash")}</button>` : ""}<button class="btn" data-close>Cancelar</button><button class="btn pri" data-save>${nuevo ? "Registrar gasto" : "Guardar cambios"}</button>` });
-  m.$("[data-save]").onclick = () => { const F = m.$("[data-f]"); if (!requireFields(F, ["categoria", "monto", "fecha"])) return; store.put("gastos", { ...g, ...formData(F), usuario: g.usuario || S.user.nombre }); m.close(); done(); toast(nuevo ? "Gasto registrado" : "Gasto actualizado"); };
-  m.$("[data-del]")?.addEventListener("click", async () => { if (await confirmBox("Se eliminará este gasto.", { ok: "Eliminar", danger: true })) { store.del("gastos", g.id); m.close(); done(); toast("Gasto eliminado"); } });
+  m.$("[data-save]").onclick = () => { const F = m.$("[data-f]"); if (!requireFields(F, ["categoria", "monto", "fecha"])) return; const sg = store.put("gastos", { ...g, ...formData(F), usuario: g.usuario || S.user.nombre }); audit(nuevo ? "Registró" : "Modificó", "Gastos", `${sg.descripcion || sg.categoria} · ${money(sg.monto)}`); m.close(); done(); toast(nuevo ? "Gasto registrado" : "Gasto actualizado"); };
+  m.$("[data-del]")?.addEventListener("click", async () => { if (await confirmBox("Se eliminará este gasto.", { ok: "Eliminar", danger: true })) { store.del("gastos", g.id); audit("Eliminó", "Gastos", `${g.descripcion || g.categoria} · ${money(g.monto)}`); m.close(); done(); toast("Gasto eliminado"); } });
+}
+
+/* ---------------- Notas de crédito (listado) ---------------- */
+VIEWS.notas = docList({ col: "notas", kind: "nota", title: "Notas de crédito", party: "clientes", newView: "", newLabel: "", estados: ["Aplicada", "Anulada"], start: 1, icon: "i-swap", open: n => notaDetail(n), extra: `<span class="small muted" style="align-self:center">Se emiten desde el detalle de una factura</span>` });
+
+/* ---------------- Lotes y trazabilidad ---------------- */
+VIEWS.lotes = el => {
+  let q = "", solo = true, cur = []; const pg = pager("lotes", [15, 30, 60]);
+  el.innerHTML = `<div class="vhead"><div><h1>Lotes y trazabilidad</h1><p>Cada compra crea un lote con su finca y fecha de cosecha. Las ventas lo descuentan en orden: primero el más antiguo.</p></div><div class="acts">${exportBtns()}</div></div>
+    <div class="toolbar"><label class="searchbox">${ic("i-search")}<input class="input" placeholder="Buscar lote, producto o finca" data-q aria-label="Buscar"></label><label class="switch"><input type="checkbox" data-solo checked> Solo con existencia</label></div><div data-out></div>`;
+  const out = $("[data-out]", el);
+  const draw = () => {
+    const n = norm(q); const list = cur = store.all("lotes").filter(l => !l.anulado && (!solo || l.disponible > 0) && (!n || norm(l.codigo + " " + (producto(l.productoId)?.nombre || "") + " " + l.finca).includes(n))).sort((a, b) => (b.cosecha || b.fecha).localeCompare(a.cosecha || a.fecha));
+    out.innerHTML = list.length ? `<div class="tbl-wrap"><table class="t cards"><thead><tr><th>Lote</th><th>Producto</th><th>Finca / origen</th><th>Cosecha</th><th>Compra</th><th class="r">Recibido</th><th class="r">Disponible</th></tr></thead><tbody>${pg.slice(list).map(l => { const p = producto(l.productoId) || { nombre: "—" }; return `<tr class="click" data-id="${l.id}"><td data-l="Lote"><b>${esc(l.codigo)}</b></td><td class="full" data-l="Producto"><div class="cell-main"><span class="thumb" style="width:34px;height:34px">${photo(p)}</span><b>${esc(p.nombre)}</b></div></td><td data-l="Finca">${esc(l.finca || "—")}</td><td data-l="Cosecha">${fdate(l.cosecha)}</td><td data-l="Compra" class="hide-m">${l.compraNum ? "#" + l.compraNum : "—"}</td><td class="n" data-l="Recibido">${qty(l.cantidad)}</td><td class="n" data-l="Disponible"><b>${qty(l.disponible)}</b></td></tr>`; }).join("")}</tbody></table></div>${pg.html(list.length)}`
+      : `<div class="panel empty">${ic("i-box")}<b>No hay lotes con este filtro</b>Los lotes se crean al registrar una compra.</div>`;
+  };
+  pg.bind(out, draw);
+  $("[data-q]", el).addEventListener("input", debounce(e => { q = e.target.value; pg.reset(); draw(); }, 120));
+  $("[data-solo]", el).onchange = e => { solo = e.target.checked; pg.reset(); draw(); };
+  out.addEventListener("click", e => { const tr = e.target.closest("tr[data-id]"); if (tr) loteDetail(store.get("lotes", tr.dataset.id)); });
+  bindExport(el, () => ({ tab: "lotes", file: "lotes", heading: "Lotes en inventario", title: "Lotes", period: filtroTxt([q && "Búsqueda: " + q, solo && "Con existencia"]), kpis: [["Lotes", String(cur.length)]], note: "",
+    cols: [{ h: "Lote" }, { h: "Producto" }, { h: "Finca / origen" }, { h: "Cosecha" }, { h: "Compra" }, { h: "Recibido", r: 1 }, { h: "Disponible", r: 1 }],
+    rows: cur.map(l => [l.codigo, producto(l.productoId)?.nombre || "—", l.finca || "", fdate(l.cosecha), l.compraNum ? "#" + l.compraNum : "", qty(l.cantidad), qty(l.disponible)]),
+    xrows: cur.map(l => [l.codigo, producto(l.productoId)?.nombre || "", l.finca || "", l.cosecha, l.compraNum || "", l.cantidad, l.disponible]), foot: null }));
+  draw();
+};
+function loteDetail(l) {
+  const p = producto(l.productoId) || { nombre: "—" }; const usos = [];
+  store.all("ventas").filter(v => v.estado !== "Anulada").forEach(v => v.lineas.forEach(x => (x.lotes || []).filter(a => a.id === l.id).forEach(a => usos.push({ v, cant: a.cant }))));
+  modal({ title: "Lote " + l.codigo, size: "wide", body: `<div class="cell-main" style="margin-bottom:14px"><span class="thumb">${photo(p)}</span><span><b>${esc(p.nombre)}</b><small>${esc(p.sku || "")}</small></span></div>
+    <dl class="dl"><dt>Finca / origen</dt><dd>${esc(l.finca || "—")}</dd><dt>Cosecha</dt><dd>${fdate(l.cosecha)}</dd><dt>Proveedor</dt><dd>${esc(proveedor(l.proveedorId).nombre)}</dd><dt>Compra</dt><dd>${l.compraNum ? "#" + l.compraNum + " del " + fdate(l.fecha) : "—"}</dd><dt>Recibido</dt><dd>${qty(l.cantidad)} ${esc(p.unidad || "")}</dd><dt>Disponible</dt><dd>${qty(l.disponible)}</dd></dl>
+    <h3 style="margin:18px 0 8px">¿A quién se vendió?</h3>${usos.length ? `<div class="tbl-wrap"><table class="t"><thead><tr><th>Factura</th><th>Fecha</th><th>Cliente</th><th class="r">Cantidad</th></tr></thead><tbody>${usos.map(u => `<tr><td>#${u.v.num}${u.v.ncf ? " · " + esc(u.v.ncf) : ""}</td><td>${fdate(u.v.fecha)}</td><td>${esc(cliente(u.v.clienteId).nombre)}</td><td class="n">${qty(u.cant)}</td></tr>`).join("")}</tbody></table></div>` : `<p class="muted">Todavía no se ha vendido nada de este lote.</p>`}`, foot: `<button class="btn" data-close>Cerrar</button>` });
+}
+
+/* ---------------- Cierre de caja ---------------- */
+VIEWS.caja = el => {
+  let dia = S.cajaDia || today(); const pgH = pager("cajas", [10, 25]);
+  const draw = () => {
+    S.cajaDia = dia;
+    const movs = [];
+    store.all("ventas").filter(v => v.estado !== "Anulada").forEach(v => (v.abonos || []).filter(a => a.fecha === dia).forEach(a => movs.push({ tipo: "Ingreso", doc: "Factura #" + v.num, quien: cliente(v.clienteId).nombre, metodo: a.metodo || "Efectivo", moneda: v.moneda || "DOP", monto: a.monto, dop: v.moneda === "USD" ? r2(a.monto * v.tasa) : a.monto, usuario: a.usuario || v.usuario })));
+    store.all("notas").filter(n => n.estado !== "Anulada" && n.fecha === dia && n.reembolso > 0).forEach(n => movs.push({ tipo: "Egreso", doc: "Reembolso NC #" + n.num, quien: cliente(n.clienteId).nombre, metodo: n.metodo, moneda: n.moneda, monto: n.reembolso, dop: n.moneda === "USD" ? r2(n.reembolso * n.tasa) : n.reembolso, usuario: n.usuario }));
+    store.all("gastos").filter(g => g.fecha === dia).forEach(g => movs.push({ tipo: "Egreso", doc: "Gasto: " + (g.descripcion || g.categoria), quien: g.categoria, metodo: g.metodo || "Efectivo", moneda: "DOP", monto: g.monto, dop: g.monto, usuario: g.usuario }));
+    store.all("compras").filter(c => c.estado !== "Anulada" && c.fecha === dia && c.condicion === "Contado").forEach(c => movs.push({ tipo: "Egreso", doc: "Compra #" + c.num, quien: proveedor(c.proveedorId).nombre, metodo: c.metodo || "Efectivo", moneda: "DOP", monto: c.total, dop: c.total, usuario: c.usuario }));
+    const cierre = store.all("cajas").find(x => x.fecha === dia);
+    const by = (tipo, met) => r2(movs.filter(m => m.tipo === tipo && m.metodo === met && m.moneda === "DOP").reduce((a, m) => a + m.monto, 0));
+    const usd = (tipo, met) => r2(movs.filter(m => m.tipo === tipo && m.metodo === met && m.moneda === "USD").reduce((a, m) => a + m.monto, 0));
+    const fondo = cierre ? cierre.fondo : (S.cajaFondo ?? (store.all("cajas").sort((a, b) => b.fecha.localeCompare(a.fecha))[0]?.fondoSiguiente ?? 5000));
+    const espEf = r2(fondo + by("Ingreso", "Efectivo") - by("Egreso", "Efectivo"));
+    const can_ = can("caja.cerrar");
+    el.innerHTML = `<div class="vhead"><div><h1>Cierre de caja</h1><p>Cuadre del día por forma de pago. El efectivo esperado incluye el fondo inicial y descuenta los pagos hechos en efectivo.</p></div>
+      <div class="acts"><input class="input" type="date" value="${dia}" data-dia style="width:auto" aria-label="Día">${cierre ? `<button class="btn" data-print>${ic("i-print")}Imprimir cierre</button>` : ""}</div></div>
+      ${cierre ? `<div class="note ok" style="margin-bottom:16px">${ic("i-check")}<span>Caja cerrada por ${esc(cierre.cerradoPor)} a las ${esc(cierre.hora)}. ${cierre.diferencia === 0 ? "Cuadró exacto." : cierre.diferencia > 0 ? "Sobrante de " + money(cierre.diferencia) + "." : "Faltante de " + money(-cierre.diferencia) + "."}</span></div>` : ""}
+      <div class="kpis">${PAGOS.map((p, i) => `<div class="kpi ${i === 0 ? "feature" : ""}"><span class="lbl">${p}</span><span class="val">${money(by("Ingreso", p))}</span><span class="delta ${i === 0 ? "" : "muted"}">${movs.filter(m => m.tipo === "Ingreso" && m.metodo === p).length} cobros${usd("Ingreso", p) ? " · " + money(usd("Ingreso", p), "USD") : ""}${by("Egreso", p) ? " · salidas " + money(by("Egreso", p)) : ""}</span></div>`).join("")}</div>
+      <div class="dash"><section class="panel flush"><header><h2>Movimientos del ${fdate(dia)}</h2><span class="small muted">${movs.length}</span></header>
+        ${movs.length ? `<div class="tbl-wrap" style="border:0;border-radius:0"><table class="t cards"><thead><tr><th>Documento</th><th>Forma</th><th>Usuario</th><th class="r">Monto</th></tr></thead><tbody>${movs.map(m => `<tr><td class="full"><b>${esc(m.doc)}</b><br><small class="muted">${esc(m.quien)}</small></td><td data-l="Forma">${esc(m.metodo)}</td><td data-l="Usuario">${esc(m.usuario || "")}</td><td class="n ${m.tipo === "Egreso" ? "down" : "up"}" data-l="Monto">${m.tipo === "Egreso" ? "−" : "+"}${money(m.monto, m.moneda)}</td></tr>`).join("")}</tbody></table></div>` : `<div class="empty">Sin cobros ni pagos registrados este día.</div>`}</section>
+      <section class="panel"><header><h2>Cuadre de efectivo</h2></header><form class="grid" data-f>
+        <label class="field"><span>Fondo inicial (RD$)</span><input class="input" type="number" step="0.01" name="fondo" value="${fondo}" ${cierre ? "disabled" : ""}></label>
+        <div class="totals"><div><span class="muted">+ Cobros en efectivo</span><span>${money(by("Ingreso", "Efectivo"))}</span></div><div><span class="muted">− Pagos en efectivo</span><span>${money(by("Egreso", "Efectivo"))}</span></div><div class="grand"><span>Esperado</span><span data-esp>${money(espEf)}</span></div></div>
+        <label class="field"><span>Efectivo contado (RD$)</span><input class="input" type="number" step="0.01" name="contado" value="${cierre ? cierre.contado : ""}" ${cierre ? "disabled" : ""} placeholder="Cuenta billetes y monedas"></label>
+        <p class="small" data-dif style="margin:0"></p>
+        <label class="field"><span>Fondo que queda para mañana (RD$)</span><input class="input" type="number" step="0.01" name="fondoSiguiente" value="${cierre ? cierre.fondoSiguiente : fondo}" ${cierre ? "disabled" : ""}></label>
+        <label class="field"><span>Observaciones</span><textarea class="input" name="notas" rows="2" ${cierre ? "disabled" : ""}>${esc(cierre?.notas || "")}</textarea></label>
+        ${cierre ? (isOwner() ? `<button type="button" class="btn danger" data-reabrir>Reabrir caja</button>` : "") : can_ ? `<button type="button" class="btn pri" data-cerrar>${ic("i-check")}Cerrar caja</button>` : `<p class="small muted">Tu rol no puede cerrar la caja.</p>`}</form></section></div>
+      <section class="panel flush" style="margin-top:16px"><header><h2>Cierres anteriores</h2></header><div data-hist></div></section>`;
+    const F = $("[data-f]", el);
+    const dif = () => { const f = +F.fondo.value || 0; const esp = r2(f + by("Ingreso", "Efectivo") - by("Egreso", "Efectivo")); $("[data-esp]", el).textContent = money(esp); const c = F.contado.value === "" ? null : +F.contado.value; const d = c == null ? null : r2(c - esp); $("[data-dif]", el).innerHTML = d == null ? "" : d === 0 ? `<b class="up">Cuadra exacto.</b>` : d > 0 ? `<b class="up">Sobrante: ${money(d)}</b>` : `<b class="down">Faltante: ${money(-d)}</b>`; return { f, esp, c, d }; };
+    if (!cierre) { F.addEventListener("input", e => { if (e.target.name === "fondo") S.cajaFondo = +e.target.value; dif(); }); dif(); } else dif();
+    $("[data-dia]", el).onchange = e => { if (e.target.value) { dia = e.target.value; S.cajaFondo = undefined; draw(); } };
+    $("[data-cerrar]", el)?.addEventListener("click", async () => {
+      const r = dif(); if (r.c == null) { F.contado.classList.add("err"); return toast("Escribe el efectivo contado.", "err"); }
+      if (!await confirmBox(`Se cerrará la caja del ${fdate(dia)} con ${r.d === 0 ? "cuadre exacto" : r.d > 0 ? "un sobrante de " + money(r.d) : "un faltante de " + money(-r.d)}.`, { ok: "Cerrar caja" })) return;
+      const resumen = Object.fromEntries(PAGOS.map(p => [p, { ingresos: by("Ingreso", p), egresos: by("Egreso", p), usd: usd("Ingreso", p) }]));
+      store.put("cajas", { fecha: dia, fondo: r.f, esperado: r.esp, contado: r.c, diferencia: r.d, fondoSiguiente: +F.fondoSiguiente.value || 0, notas: F.notas.value.trim(), resumen, movimientos: movs.length, cerradoPor: S.user.nombre, hora: new Date().toLocaleTimeString("es-DO", { hour: "2-digit", minute: "2-digit" }), estado: "Cerrada" });
+      audit("Cerró", "Caja", `Caja del ${dia}: esperado ${money(r.esp)}, contado ${money(r.c)}`); S.cajaFondo = undefined; toast("Caja cerrada"); draw();
+    });
+    $("[data-reabrir]", el)?.addEventListener("click", async () => { if (await confirmBox("Se borrará el cierre de este día para poder rehacerlo.", { ok: "Reabrir", danger: true })) { store.del("cajas", cierre.id); audit("Reabrió", "Caja", `Caja del ${dia}`); draw(); } });
+    $("[data-print]", el)?.addEventListener("click", () => printReport({ tab: "caja", heading: "Cierre de caja", title: "Caja", period: `${fdate(dia)} · cerrado por ${cierre.cerradoPor} a las ${cierre.hora}`,
+      kpis: [["Fondo inicial", money(cierre.fondo)], ["Efectivo esperado", money(cierre.esperado)], ["Efectivo contado", money(cierre.contado)], [cierre.diferencia >= 0 ? "Sobrante" : "Faltante", money(Math.abs(cierre.diferencia))]], note: cierre.notas || "",
+      cols: [{ h: "Documento" }, { h: "Detalle" }, { h: "Forma" }, { h: "Usuario" }, { h: "Monto", r: 1 }], rows: movs.map(m => [m.doc, m.quien, m.metodo, m.usuario || "", (m.tipo === "Egreso" ? "-" : "") + money(m.monto, m.moneda)]),
+      foot: ["Totales por forma de pago", PAGOS.map(p => `${p}: ${money(by("Ingreso", p) - by("Egreso", p))}`).join(" · "), "", "", ""] }));
+    const H = store.all("cajas").slice().sort((a, b) => b.fecha.localeCompare(a.fecha)); const hist = $("[data-hist]", el);
+    const drawH = () => { hist.innerHTML = H.length ? `<div class="tbl-wrap" style="border:0;border-radius:0"><table class="t cards"><thead><tr><th>Día</th><th>Cerró</th><th class="r">Esperado</th><th class="r">Contado</th><th class="r">Diferencia</th></tr></thead><tbody>${pgH.slice(H).map(x => `<tr class="click" data-dia="${x.fecha}"><td data-l="Día"><b>${fdate(x.fecha)}</b></td><td data-l="Cerró">${esc(x.cerradoPor)} · ${esc(x.hora)}</td><td class="n" data-l="Esperado">${money(x.esperado)}</td><td class="n" data-l="Contado">${money(x.contado)}</td><td class="n ${x.diferencia < 0 ? "down" : x.diferencia > 0 ? "up" : ""}" data-l="Diferencia">${money(x.diferencia)}</td></tr>`).join("")}</tbody></table></div><div style="padding:0 14px">${pgH.html(H.length)}</div>` : `<div class="empty">Todavía no hay cierres.</div>`; };
+    drawH(); hist.onclick = e => { const tr = e.target.closest("tr[data-dia]"); if (tr) { dia = tr.dataset.dia; draw(); window.scrollTo({ top: 0, behavior: "smooth" }); } };
+    pgH.bind(hist, drawH);
+  };
+  draw();
+};
+
+/* ---------------- Listas de precios ---------------- */
+VIEWS.listas = el => {
+  const L = store.all("listas");
+  el.innerHTML = `<div class="vhead"><div><h1>Listas de precios</h1><p>Asigna una lista a un cliente y sus facturas y cotizaciones tomarán esos precios automáticamente.</p></div><div class="acts">${can("listas.editar") ? `<button class="btn pri" data-new>${ic("i-plus")}<span class="lbl">Nueva lista</span></button>` : ""}</div></div>
+    ${L.length ? `<div class="pgrid" style="grid-template-columns:repeat(auto-fill,minmax(280px,1fr))">${L.map(x => { const n = store.all("clientes").filter(c => c.listaId === x.id); return `<button class="panel" data-id="${x.id}" style="text-align:left;cursor:pointer;display:grid;gap:8px;font:inherit;color:inherit"><span style="display:flex;justify-content:space-between;gap:8px"><b style="font-size:1.05rem">${esc(x.nombre)}</b><span class="chip plain ${x.moneda === "USD" ? "info" : ""}">${x.moneda === "USD" ? "US$" : "RD$"}</span></span><span class="small muted">${esc(x.desc || "Sin descripción")}</span><span class="small">${Object.values(x.precios || {}).filter(v => v !== "" && v != null).length} productos con precio · ${n.length} ${n.length === 1 ? "cliente" : "clientes"}</span>${n.length ? `<span class="tiny muted">${esc(n.slice(0, 3).map(c => c.nombre).join(", "))}${n.length > 3 ? "…" : ""}</span>` : ""}</button>`; }).join("")}</div>`
+      : `<div class="panel empty">${ic("i-list")}<b>Aún no hay listas de precios</b>Crea una para clientes mayoristas, restaurantes o compradores del exterior.</div>`}`;
+  $("[data-new]", el)?.addEventListener("click", () => listaForm());
+  el.addEventListener("click", e => { const b = e.target.closest("[data-id]"); if (b) listaForm(store.get("listas", b.dataset.id)); });
+};
+function listaForm(L) {
+  const nuevo = !L; L = L ? JSON.parse(JSON.stringify(L)) : { nombre: "", moneda: "DOP", desc: "", precios: {} }; const ro = !can("listas.editar");
+  const P = store.all("productos").filter(p => p.activo !== false).sort((a, b) => a.nombre.localeCompare(b.nombre));
+  const base = p => L.moneda === "USD" ? r2(p.precio / store.config.tasa) : p.precio;
+  const m = modal({ title: nuevo ? "Nueva lista de precios" : L.nombre, size: "wide", body: `<form class="grid" data-f><div class="grid g3"><label class="field"><span>Nombre</span><input class="input" name="nombre" value="${esc(L.nombre)}" placeholder="Ej. Mayorista local" ${ro ? "readonly" : ""}></label><label class="field"><span>Moneda</span><select class="input" name="moneda" ${ro ? "disabled" : ""}><option value="DOP" ${L.moneda === "DOP" ? "selected" : ""}>Pesos (RD$)</option><option value="USD" ${L.moneda === "USD" ? "selected" : ""}>Dólares (US$)</option></select></label><label class="field"><span>Descripción</span><input class="input" name="desc" value="${esc(L.desc || "")}" ${ro ? "readonly" : ""}></label></div>
+    ${ro ? "" : `<div class="toolbar" style="margin:0"><span class="small muted">Llenar todos con el precio base</span><input class="input" type="number" step="0.5" data-pct value="-10" style="width:90px" aria-label="Porcentaje"><span class="small muted">%</span><button type="button" class="btn sm" data-apply>Aplicar</button><button type="button" class="btn sm ghost" data-clear>Vaciar</button></div>`}
+    <div class="tbl-wrap"><table class="t"><thead><tr><th>Producto</th><th class="r">Precio base</th><th class="r" style="width:160px">Precio en la lista</th><th class="r">Diferencia</th></tr></thead><tbody data-rows>${P.map(p => `<tr><td><b>${esc(p.nombre)}</b><br><small class="muted">${esc(p.sku)} · ${esc(p.unidad)}</small></td><td class="n" data-b="${p.id}">${money(base(p), L.moneda)}</td><td class="n"><input class="input" style="height:36px;text-align:right" type="number" step="0.01" min="0" data-pp="${p.id}" value="${L.precios[p.id] ?? ""}" placeholder="Precio base" ${ro ? "readonly" : ""}></td><td class="n small" data-df="${p.id}"></td></tr>`).join("")}</tbody></table></div>
+    <p class="small muted" style="margin:0">Deja vacío un producto para que use su precio normal.</p></form>`,
+    foot: `${!nuevo && can("eliminar") ? `<button class="btn danger" data-del style="margin-right:auto">${ic("i-trash")}Eliminar</button>` : ""}<button class="btn" data-close>${ro ? "Cerrar" : "Cancelar"}</button>${ro ? "" : `<button class="btn pri" data-save>${nuevo ? "Crear lista" : "Guardar cambios"}</button>`}` });
+  const F = m.$("[data-f]");
+  const diffs = () => { L.moneda = F.moneda.value; P.forEach(p => { m.$(`[data-b="${p.id}"]`).textContent = money(base(p), L.moneda); const v = m.$(`[data-pp="${p.id}"]`).value; const d = v === "" ? null : (+v - base(p)) / base(p) * 100; m.$(`[data-df="${p.id}"]`).innerHTML = d == null ? "" : `<span class="${d < 0 ? "down" : "up"}">${d > 0 ? "+" : ""}${d.toFixed(1)}%</span>`; }); };
+  F.addEventListener("input", diffs); F.moneda.onchange = diffs; diffs();
+  m.$("[data-apply]")?.addEventListener("click", () => { const k = 1 + (+m.$("[data-pct]").value || 0) / 100; P.forEach(p => m.$(`[data-pp="${p.id}"]`).value = r2(base(p) * k)); diffs(); });
+  m.$("[data-clear]")?.addEventListener("click", () => { P.forEach(p => m.$(`[data-pp="${p.id}"]`).value = ""); diffs(); });
+  m.$("[data-save]")?.addEventListener("click", () => {
+    if (!requireFields(F, ["nombre"])) return;
+    L.nombre = F.nombre.value.trim(); L.moneda = F.moneda.value; L.desc = F.desc.value.trim(); L.precios = {}; P.forEach(p => { const v = m.$(`[data-pp="${p.id}"]`).value; if (v !== "") L.precios[p.id] = +v; });
+    store.put("listas", L); audit(nuevo ? "Creó" : "Modificó", "Listas de precios", L.nombre); m.close(); route(); toast(nuevo ? "Lista creada" : "Lista actualizada");
+  });
+  m.$("[data-del]")?.addEventListener("click", async () => { const n = store.all("clientes").filter(c => c.listaId === L.id); if (await confirmBox(`Se eliminará la lista ${esc(L.nombre)}.${n.length ? ` ${n.length} cliente(s) volverán al precio normal.` : ""}`, { ok: "Eliminar", danger: true })) { n.forEach(c => { c.listaId = ""; store.put("clientes", c); }); store.del("listas", L.id); audit("Eliminó", "Listas de precios", L.nombre); m.close(); route(); toast("Lista eliminada"); } });
+}
+
+/* ---------------- Bitácora ---------------- */
+VIEWS.bitacora = el => {
+  const f = { desde: addDays(today(), -30), hasta: today(), usuario: "", modulo: "", q: "" }; const pg = pager("bitacora", [25, 50, 100]); let cur = [];
+  const B = store.all("bitacora"); const users = [...new Set(B.map(b => b.usuario))].sort(), mods = [...new Set(B.map(b => b.modulo))].sort();
+  el.innerHTML = `<div class="vhead"><div><h1>Bitácora</h1><p>Registro de quién hizo qué y cuándo: facturas, cobros, anulaciones, cambios de precios, usuarios y configuración.</p></div><div class="acts">${exportBtns()}</div></div>
+    <section class="panel" style="margin-bottom:14px;padding:14px"><div class="grid g4 keep2" style="align-items:end"><label class="field"><span>Desde</span><input class="input" type="date" data-f="desde" value="${f.desde}"></label><label class="field"><span>Hasta</span><input class="input" type="date" data-f="hasta" value="${f.hasta}"></label>
+    <label class="field"><span>Usuario</span><select class="input" data-f="usuario"><option value="">Todos</option>${users.map(u => `<option>${esc(u)}</option>`).join("")}</select></label><label class="field"><span>Módulo</span><select class="input" data-f="modulo"><option value="">Todos</option>${mods.map(u => `<option>${esc(u)}</option>`).join("")}</select></label></div>
+    <label class="searchbox" style="margin-top:12px;display:block">${ic("i-search")}<input class="input" data-f="q" placeholder="Buscar en el detalle" aria-label="Buscar"></label></section><div data-out></div>`;
+  const out = $("[data-out]", el);
+  const draw = () => {
+    const n = norm(f.q); cur = store.all("bitacora").filter(b => inRange(b.fecha.slice(0, 10), f.desde, f.hasta) && (!f.usuario || b.usuario === f.usuario) && (!f.modulo || b.modulo === f.modulo) && (!n || norm(b.accion + " " + b.detalle).includes(n))).sort((a, b) => b.fecha.localeCompare(a.fecha));
+    const hora = s => new Date(s).toLocaleString("es-DO", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+    out.innerHTML = cur.length ? `<div class="tbl-wrap"><table class="t cards"><thead><tr><th>Fecha y hora</th><th>Usuario</th><th>Acción</th><th>Módulo</th><th>Detalle</th></tr></thead><tbody>${pg.slice(cur).map(b => `<tr><td data-l="Fecha">${hora(b.fecha)}</td><td data-l="Usuario"><b>${esc(b.usuario)}</b></td><td data-l="Acción"><span class="chip plain ${/Anul|Elimin|Reabr/.test(b.accion) ? "bad" : /Emiti|Cobr|Cerr/.test(b.accion) ? "ok" : ""}">${esc(b.accion)}</span></td><td data-l="Módulo">${esc(b.modulo)}</td><td class="full" data-l="Detalle">${esc(b.detalle)}</td></tr>`).join("")}</tbody></table></div>${pg.html(cur.length)}` : `<div class="panel empty">${ic("i-shield")}<b>Sin registros con estos filtros</b>Las acciones se registran a partir de ahora.</div>`;
+  };
+  pg.bind(out, draw);
+  el.addEventListener("input", debounce(e => { const k = e.target.dataset.f; if (k) { f[k] = e.target.value; pg.reset(); draw(); } }, 150));
+  el.addEventListener("change", e => { const k = e.target.dataset.f; if (k) { f[k] = e.target.value; pg.reset(); draw(); } });
+  bindExport(el, () => ({ tab: "bitacora", file: "bitacora", heading: "Bitácora de auditoría", title: "Bitácora", period: filtroTxt([`Del ${fdate(f.desde)} al ${fdate(f.hasta)}`, f.usuario, f.modulo]), kpis: [["Registros", String(cur.length)]], note: "",
+    cols: [{ h: "Fecha y hora" }, { h: "Usuario" }, { h: "Acción" }, { h: "Módulo" }, { h: "Detalle" }], rows: cur.map(b => [new Date(b.fecha).toLocaleString("es-DO"), b.usuario, b.accion, b.modulo, b.detalle]), xrows: cur.map(b => [b.fecha.replace("T", " ").slice(0, 19), b.usuario, b.accion, b.modulo, b.detalle]), foot: null }));
+  draw();
+};
+
+/* ---------------- DGII 606 / 607 ---------------- */
+const soloDig = s => String(s || "").replace(/\D/g, "");
+const tipoId = rnc => { const d = soloDig(rnc); return d.length === 9 ? "1" : d.length === 11 ? "2" : d ? "3" : ""; };
+const esLocal = c => !c?.pais || norm(c.pais).includes("dominicana");
+const idDGII = c => esLocal(c) ? soloDig(c?.rnc) : "";
+const ymd = s => (s || "").replace(/-/g, "");
+const n2 = n => (Math.round((+n || 0) * 100) / 100).toFixed(2);
+function dgiiData(tipo, mes) {
+  const T = store.config.tasa;
+  if (tipo === "607") {
+    const rows = [];
+    store.all("ventas").filter(v => v.estado !== "Anulada" && ym(v.fecha) === mes && v.ncf).forEach(v => {
+      const k = v.moneda === "USD" ? v.tasa || T : 1; const c = cliente(v.clienteId); const ini = (v.abonos || [])[0];
+      const pago = { ef: 0, tr: 0, ta: 0, cr: 0 }; const tot = r2(v.total * k);
+      if (v.condicion === "Crédito") pago.cr = tot; else { const m = ini?.metodo || "Efectivo"; pago[m === "Efectivo" ? "ef" : m === "Tarjeta" ? "ta" : "tr"] = tot; }
+      rows.push({ rnc: idDGII(c), tid: tipoId(idDGII(c)), ncf: v.ncf, mod: "", ti: "01", fecha: ymd(v.fecha), monto: r2(v.subtotal * k), itbis: r2(v.itbis * k), ...pago, cliente: c.nombre, doc: "Factura #" + v.num });
+    });
+    store.all("notas").filter(n => n.estado !== "Anulada" && ym(n.fecha) === mes && n.ncf).forEach(n => { const k = n.moneda === "USD" ? n.tasa || T : 1; const c = cliente(n.clienteId); rows.push({ rnc: idDGII(c), tid: tipoId(idDGII(c)), ncf: n.ncf, mod: n.ncfModificado || "", ti: "01", fecha: ymd(n.fecha), monto: r2(n.subtotal * k), itbis: r2(n.itbis * k), ef: 0, tr: 0, ta: 0, cr: 0, otras: r2(n.total * k), cliente: c.nombre, doc: "NC #" + n.num }); });
+    const sin = store.all("ventas").filter(v => v.estado !== "Anulada" && ym(v.fecha) === mes && !v.ncf).length;
+    const line = r => [r.rnc, r.tid, r.ncf, r.mod, r.ti, r.fecha, "", n2(r.monto), n2(r.itbis), n2(0), n2(0), n2(0), n2(0), n2(0), n2(0), n2(0), n2(r.ef), n2(r.tr), n2(r.ta), n2(r.cr), n2(0), n2(0), n2(r.otras || 0)].join("|");
+    return { rows, sin, line, header: `607|${soloDig(store.config.rnc)}|${mes.replace("-", "")}|${rows.length}` };
+  }
+  const rows = [];
+  store.all("compras").filter(c => c.estado !== "Anulada" && ym(c.fecha) === mes && c.documento).forEach(c => { const pv = proveedor(c.proveedorId); rows.push({ rnc: soloDig(pv.rnc), tid: tipoId(pv.rnc), tb: pv.tipo606 || "09", ncf: c.documento, mod: "", fecha: ymd(c.fecha), pago: c.estado === "Pagada" ? ymd(c.pagadaEl || c.fecha) : "", serv: 0, bienes: r2(c.subtotal), total: r2(c.subtotal), itbis: r2(c.itbis || 0), fp: c.condicion === "Crédito" ? "04" : ({ Efectivo: "01", Tarjeta: "03" }[c.metodo] || "02"), prov: pv.nombre, doc: "Compra #" + c.num }); });
+  store.all("gastos").filter(g => ym(g.fecha) === mes && g.ncf).forEach(g => { const itb = +g.itbis || 0; const base = r2(g.monto - itb); rows.push({ rnc: soloDig(g.rnc), tid: tipoId(g.rnc), tb: g.tipo606 || "02", ncf: g.ncf, mod: "", fecha: ymd(g.fecha), pago: ymd(g.fecha), serv: base, bienes: 0, total: base, itbis: r2(itb), fp: ({ Efectivo: "01", Tarjeta: "03" }[g.metodo] || "02"), prov: g.descripcion || g.categoria, doc: "Gasto" }); });
+  const line = r => [r.rnc, r.tid, r.tb, r.ncf, r.mod, r.fecha, r.pago, n2(r.serv), n2(r.bienes), n2(r.total), n2(r.itbis), n2(0), n2(0), n2(0), n2(r.itbis), n2(0), "", n2(0), n2(0), n2(0), n2(0), n2(0), r.fp].join("|");
+  return { rows, sin: store.all("compras").filter(c => c.estado !== "Anulada" && ym(c.fecha) === mes && !c.documento).length, line, header: `606|${soloDig(store.config.rnc)}|${mes.replace("-", "")}|${rows.length}` };
 }
 
 /* ---------------- Reportes ---------------- */
 const PDF_LIBS = ["https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js", "https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"];
 const scriptCache = {};
 const loadScript = src => scriptCache[src] ||= new Promise((res, rej) => { const sc = document.createElement("script"); sc.src = src; sc.onload = res; sc.onerror = () => { delete scriptCache[src]; rej(new Error("No se pudo cargar el generador de PDF. Revisa la conexión a internet.")); }; document.head.append(sc); });
-const REP_TABS = [["ventas", "Ventas"], ["utilidades", "Utilidades"], ["cxc", "Cuentas por cobrar"], ["cxp", "Cuentas por pagar"], ["inventario", "Inventario"], ["ordenes", "Órdenes de trabajo"]];
+const REP_TABS = [["ventas", "Ventas"], ["utilidades", "Utilidades"], ["cxc", "Cuentas por cobrar"], ["cxp", "Cuentas por pagar"], ["inventario", "Inventario"], ["ordenes", "Órdenes de trabajo"], ["dgii", "DGII 606 / 607"]];
 const cellT = c => c == null ? "" : typeof c === "object" ? (c.t ?? "") : String(c);
 const cellH = c => c == null ? "" : typeof c === "object" ? (c.h ?? esc(c.t ?? "")) : esc(c);
 
@@ -1856,7 +2361,8 @@ function buildReport(tab, f) {
     const tot = V.reduce((a, v) => a + subDOP(v), 0); const exp = V.filter(v => v.tipo === "Exportación").reduce((a, v) => a + subDOP(v), 0);
     const byCli = {}; V.forEach(v => byCli[v.clienteId] = (byCli[v.clienteId] || 0) + subDOP(v));
     const days = {}; V.forEach(v => days[v.fecha] = (days[v.fecha] || 0) + subDOP(v)); const dk = Object.keys(days).sort();
-    R.kpis = [["Vendido sin ITBIS", money(tot), V.length + " facturas"], ["Ticket promedio", money(V.length ? tot / V.length : 0)], ["Exportación", (tot ? Math.round(exp / tot * 100) : 0) + "%", money(exp)], ["ITBIS facturado", money(V.filter(v => v.moneda === "DOP").reduce((a, v) => a + v.itbis, 0))]];
+    const NC = store.all("notas").filter(n => n.estado !== "Anulada" && inRange(n.fecha, f.desde, f.hasta)); const nc = NC.reduce((a, n) => a + subDOP(n), 0);
+    R.kpis = [["Vendido sin ITBIS", money(tot - nc), V.length + " facturas" + (NC.length ? ` · ${NC.length} notas de crédito por ${money(nc)}` : "")], ["Ticket promedio", money(V.length ? tot / V.length : 0)], ["Exportación", (tot ? Math.round(exp / tot * 100) : 0) + "%", money(exp)], ["ITBIS facturado", money(V.filter(v => v.moneda === "DOP").reduce((a, v) => a + v.itbis, 0))]];
     R.extra = `<div class="dash" style="margin-bottom:16px"><section class="panel"><header><h2>Ventas por día</h2></header>${dk.length > 1 ? lineChart(dk.map(d => d.slice(8) + "/" + d.slice(5, 7)), [{ name: "Ventas", color: isDark() ? "#FF5A4E" : "#D4271F", values: dk.map(d => r2(days[d])) }], { h: 220 }) : `<div class="empty">Se necesitan al menos dos días con ventas.</div>`}</section>
       <section class="panel"><header><h2>Por cliente</h2></header>${bars(Object.entries(byCli).map(([id, v]) => ({ label: cliente(id).nombre, value: r2(v) })).sort((a, b) => b.value - a.value).slice(0, 8))}</section></div>`;
     R.cols = [{ h: "Factura" }, { h: "Fecha" }, { h: "Cliente" }, { h: "Tipo" }, { h: "Total", r: 1 }, { h: "Total RD$", r: 1 }, { h: "Estado" }];
@@ -1864,7 +2370,8 @@ function buildReport(tab, f) {
     R.foot = ["Total", "", "", "", "", money(V.reduce((a, v) => a + toDOP(v), 0)), ""];
     R.csv = [["Factura", "Fecha", "Cliente", "Tipo", "Moneda", "Subtotal", "ITBIS", "Total", "Total RD$", "Estado", "Vendedor"], ...V.map(v => [v.num, v.fecha, cliente(v.clienteId).nombre, v.tipo, v.moneda, v.subtotal, v.itbis, v.total, toDOP(v), v.estado, v.usuario])];
   } else if (tab === "utilidades") {
-    const ing = V.reduce((a, v) => a + subDOP(v), 0), cos = V.reduce((a, v) => a + costoVenta(v), 0); const G = store.all("gastos").filter(g => inRange(g.fecha, f.desde, f.hasta)); const gas = G.reduce((a, g) => a + g.monto, 0);
+    const NC = store.all("notas").filter(n => n.estado !== "Anulada" && inRange(n.fecha, f.desde, f.hasta));
+    const ing = V.reduce((a, v) => a + subDOP(v), 0) - NC.reduce((a, n) => a + subDOP(n), 0), cos = V.reduce((a, v) => a + costoVenta(v), 0) - NC.filter(n => n.reingresa).reduce((a, n) => a + n.lineas.reduce((x, l) => x + l.cant * (l.costo || 0), 0), 0); const G = store.all("gastos").filter(g => inRange(g.fecha, f.desde, f.hasta)); const gas = G.reduce((a, g) => a + g.monto, 0);
     const bp = {}; V.forEach(v => v.lineas.forEach(l => { const k = l.productoId; bp[k] ||= { u: 0, i: 0, c: 0 }; bp[k].u += l.cant; bp[k].i += l.cant * l.precio * (v.moneda === "USD" ? v.tasa : 1); bp[k].c += l.cant * (l.costo || 0); }));
     const list = Object.entries(bp).map(([id, x]) => ({ p: producto(id) || { nombre: "—" }, ...x, g: x.i - x.c })).sort((a, b) => b.g - a.g);
     R.kpis = [["Ingresos netos", money(ing)], ["Costo de lo vendido", money(cos)], ["Gastos operativos", money(gas), G.length + " gastos"], ["Utilidad neta", money(ing - cos - gas), "Margen bruto " + (ing ? ((ing - cos) / ing * 100).toFixed(1) : 0) + "%"]];
@@ -1899,6 +2406,23 @@ function buildReport(tab, f) {
     R.rows = P.map(p => [{ t: p.nombre + " (" + p.sku + ")", h: thumb(p) }, { t: qty(p.stock), h: heat(p) }, qty(p.minimo), money(p.costo), money(Math.max(0, p.stock) * p.costo), money(Math.max(0, p.stock) * p.precio)]);
     R.foot = ["Total", "", "", "", money(vc), money(vv)];
     R.csv = [["SKU", "Producto", "Categoría", "Existencia", "Mínimo", "Costo", "Valor al costo", "Precio", "Valor a precio de venta"], ...P.map(p => [p.sku, p.nombre, p.categoria, p.stock, p.minimo, p.costo, r2(p.stock * p.costo), p.precio, r2(p.stock * p.precio)])];
+  } else if (tab === "dgii") {
+    const mes = f.mes ||= ym(f.hasta || today()); const tipo = f.dgii ||= "607"; const D = dgiiData(tipo, mes);
+    R.period = mesLargo(mes); R.heading = `Formato ${tipo} · ${tipo === "607" ? "ventas de bienes y servicios" : "compras de bienes y servicios"}`; R.file = `dgii-${tipo}-${mes}`;
+    R.note = `Borrador para revisión del contador. Antes de enviarlo, valídalo con la herramienta de formatos de la DGII.${D.sin ? ` Hay ${D.sin} ${tipo === "607" ? "facturas" : "compras"} del mes sin NCF que no se incluyen.` : ""}`;
+    R.extra = `<section class="panel" style="margin-bottom:16px;padding:14px"><div class="toolbar" style="margin:0"><div class="seg" data-dgii><button data-v="607" class="${tipo === "607" ? "on" : ""}">607 · Ventas</button><button data-v="606" class="${tipo === "606" ? "on" : ""}">606 · Compras</button></div><input class="input" type="month" data-mes value="${mes}" style="width:auto" aria-label="Mes"><button class="btn pri" data-txt>${ic("i-down")}Descargar TXT</button></div></section>`;
+    if (tipo === "607") {
+      R.kpis = [["Comprobantes", String(D.rows.length)], ["Monto facturado", money(D.rows.reduce((a, r) => a + (r.mod ? -r.monto : r.monto), 0))], ["ITBIS facturado", money(D.rows.reduce((a, r) => a + (r.mod ? -r.itbis : r.itbis), 0))], ["Ventas a crédito", money(D.rows.reduce((a, r) => a + r.cr, 0))]];
+      R.cols = [{ h: "RNC / Cédula" }, { h: "Tipo" }, { h: "NCF" }, { h: "NCF modificado" }, { h: "Fecha" }, { h: "Cliente" }, { h: "Monto", r: 1 }, { h: "ITBIS", r: 1 }, { h: "Forma de pago" }];
+      R.rows = D.rows.map(r => [r.rnc || "—", r.tid || "—", r.ncf, r.mod, r.fecha, r.cliente, money(r.monto), money(r.itbis), r.mod ? "Nota de crédito" : r.cr ? "Crédito" : r.ef ? "Efectivo" : r.ta ? "Tarjeta" : "Transferencia"]);
+      R.xrows = D.rows.map(r => [r.rnc, r.tid, r.ncf, r.mod, r.fecha, r.cliente, r.monto, r.itbis, r.mod ? "Nota de crédito" : r.cr ? "Crédito" : r.ef ? "Efectivo" : r.ta ? "Tarjeta" : "Transferencia"]);
+    } else {
+      R.kpis = [["Comprobantes", String(D.rows.length)], ["Total facturado", money(D.rows.reduce((a, r) => a + r.total, 0))], ["ITBIS facturado", money(D.rows.reduce((a, r) => a + r.itbis, 0))], ["Bienes / servicios", money(D.rows.reduce((a, r) => a + r.bienes, 0)) + " / " + money(D.rows.reduce((a, r) => a + r.serv, 0))]];
+      R.cols = [{ h: "RNC" }, { h: "Tipo bienes" }, { h: "NCF" }, { h: "Fecha" }, { h: "Suplidor" }, { h: "Bienes", r: 1 }, { h: "Servicios", r: 1 }, { h: "ITBIS", r: 1 }, { h: "Pago" }];
+      R.rows = D.rows.map(r => [r.rnc || "—", r.tb, r.ncf, r.fecha, r.prov, money(r.bienes), money(r.serv), money(r.itbis), { "01": "Efectivo", "02": "Transferencia/cheque", "03": "Tarjeta", "04": "Crédito" }[r.fp]]);
+      R.xrows = D.rows.map(r => [r.rnc, r.tb, r.ncf, r.fecha, r.prov, r.bienes, r.serv, r.itbis, r.fp]);
+    }
+    R.txt = [D.header, ...D.rows.map(D.line)].join("\r\n"); R.csv = [R.cols.map(c => c.h), ...R.xrows];
   } else {
     const O = store.all("ordenes").filter(o => inRange(o.entrega, f.desde, f.hasta) || inRange(o.fecha, f.desde, f.hasta) || o.estado !== "Despachada").sort((a, b) => a.entrega.localeCompare(b.entrega));
     const desp = O.filter(o => o.estado === "Despachada"); const aTiempo = desp.filter(o => (o.despachada || o.entrega) <= o.entrega);
@@ -1998,13 +2522,16 @@ VIEWS.reportes = el => {
   el.innerHTML = `<div class="vhead"><div><h1>Reportes</h1><p>Información para decidir: qué se vende, cuánto se gana, quién debe y cómo van los pedidos.</p></div>
     <div class="acts"><input class="input" type="date" data-f="desde" value="${f.desde}" style="width:auto" aria-label="Desde"><input class="input" type="date" data-f="hasta" value="${f.hasta}" style="width:auto" aria-label="Hasta">
     <button class="btn" data-print>${ic("i-print")}Imprimir</button><button class="btn" data-pdf>${ic("i-quote")}Ver PDF</button><button class="btn" data-xls>${ic("i-grid")}Excel</button><button class="btn" data-csv>${ic("i-down")}CSV</button></div></div>
-    <div class="tabs" data-tabs>${REP_TABS.map(([k, l]) => `<button data-t="${k}" class="${f.tab === k ? "on" : ""}">${l}</button>`).join("")}</div><div data-out></div>`;
+    <div class="tabs" data-tabs>${REP_TABS.filter(([k]) => k !== "dgii" || feat("ncf")).map(([k, l]) => `<button data-t="${k}" class="${f.tab === k ? "on" : ""}">${l}</button>`).join("")}</div><div data-out></div>`;
   const out = $("[data-out]", el);
   const draw = () => {
     R = buildReport(f.tab, f);
     out.innerHTML = `${R.note ? `<p class="small muted" style="margin:-6px 0 12px">${esc(R.note)}</p>` : ""}<div class="kpis">${R.kpis.map((k, i) => `<div class="kpi ${i === 0 && ["ventas", "ordenes"].includes(R.tab) || (i === 3 && R.tab === "utilidades") ? "feature" : ""}"><span class="lbl">${esc(k[0])}</span><span class="val">${esc(k[1])}</span>${k[2] ? `<span class="delta ${i === 0 && ["ventas", "ordenes"].includes(R.tab) || (i === 3 && R.tab === "utilidades") ? "" : "muted"}">${esc(k[2])}</span>` : ""}</div>`).join("")}</div>
       ${R.extra}${reportTableHTML(R, pg.slice(R.rows))}${pg.html(R.rows.length)}`;
     $$("[data-cobrar]", out).forEach(b => b.onclick = () => abonoForm(store.get("ventas", b.dataset.cobrar)));
+    $("[data-dgii]", out)?.addEventListener("click", e => { const b = e.target.closest("button"); if (b) { f.dgii = b.dataset.v; pg.reset(); draw(); } });
+    $("[data-mes]", out)?.addEventListener("change", e => { if (e.target.value) { f.mes = e.target.value; pg.reset(); draw(); } });
+    $("[data-txt]", out)?.addEventListener("click", () => { downloadText(`DGII_F_${f.dgii}_${soloDig(store.config.rnc)}_${f.mes.replace("-", "")}.txt`, R.txt, "text/plain"); audit("Generó", "Reportes", `Formato ${f.dgii} de ${f.mes}`); });
     $$("[data-ver]", out).forEach(b => b.onclick = () => compraDetail(store.get("compras", b.dataset.ver)));
   };
   pg.bind(out, draw);
@@ -2028,6 +2555,7 @@ VIEWS.kardex = el => {
     const mv = [];
     comprasOK().forEach(c => c.lineas.filter(l => l.productoId === pid).forEach(l => mv.push({ f: c.fecha, n: c.updated || 0, tipo: "Compra", doc: "#" + c.num, ter: proveedor(c.proveedorId).nombre, ent: l.cant, sal: 0, cu: l.precio })));
     ventasOK().forEach(v => v.lineas.filter(l => l.productoId === pid).forEach(l => mv.push({ f: v.fecha, n: v.updated || 0, tipo: "Venta", doc: "#" + v.num, ter: cliente(v.clienteId).nombre, ent: 0, sal: l.cant, cu: l.costo || 0 })));
+    store.all("notas").filter(n => n.estado !== "Anulada" && n.reingresa).forEach(n => n.lineas.filter(l => l.productoId === pid).forEach(l => mv.push({ f: n.fecha, n: n.updated || 0, tipo: "Devolución", doc: "NC #" + n.num, ter: cliente(n.clienteId).nombre, ent: l.cant, sal: 0, cu: l.costo || p.costo })));
     store.all("ajustes").filter(a => a.productoId === pid).forEach(a => mv.push({ f: a.fecha, n: a.updated || 0, tipo: "Ajuste", doc: a.motivo, ter: a.usuario, ent: a.cant > 0 ? a.cant : 0, sal: a.cant < 0 ? -a.cant : 0, cu: p.costo }));
     mv.sort((a, b) => a.f.localeCompare(b.f) || a.n - b.n);
     let s = r2(p.stock - mv.reduce((a, m) => a + m.ent - m.sal, 0)); const ini = s;
@@ -2036,7 +2564,7 @@ VIEWS.kardex = el => {
     const ent = mv.reduce((a, m) => a + m.ent, 0), sal = mv.reduce((a, m) => a + m.sal, 0); kx = { p, mv, ini, ent, sal };
     $("[data-out]", el).innerHTML = `<div class="kpis"><div class="kpi feature"><span class="lbl">Existencia actual</span><span class="val">${qty(p.stock)}</span><span class="delta">${esc(p.unidad)}</span></div><div class="kpi"><span class="lbl">Entradas</span><span class="val up">+${qty(ent)}</span></div><div class="kpi"><span class="lbl">Salidas</span><span class="val down">−${qty(sal)}</span></div><div class="kpi"><span class="lbl">Costo promedio</span><span class="val">${money(p.costo)}</span></div></div>
     <div class="tbl-wrap"><table class="t"><thead><tr><th>Fecha</th><th>Movimiento</th><th>Tercero</th><th class="r">Entrada</th><th class="r">Salida</th><th class="r">Costo unit.</th><th class="r">Saldo</th></tr></thead><tbody>
-    ${(() => { const rev = mv.slice().reverse(); const page = pg.slice(rev); const last = pg.st.page >= Math.ceil(rev.length / pg.st.size); return page; })().map(m => `<tr><td>${fdate(m.f)}</td><td><span class="chip ${m.tipo === "Compra" ? "ok" : m.tipo === "Venta" ? "bad" : "warn"} plain">${m.tipo}</span> ${esc(m.doc)}</td><td>${esc(m.ter)}</td><td class="n up">${m.ent ? "+" + qty(m.ent) : ""}</td><td class="n down">${m.sal ? "−" + qty(m.sal) : ""}</td><td class="n">${money(m.cu)}</td><td class="n"><b>${qty(m.saldo)}</b></td></tr>`).join("")}
+    ${(() => { const rev = mv.slice().reverse(); const page = pg.slice(rev); const last = pg.st.page >= Math.ceil(rev.length / pg.st.size); return page; })().map(m => `<tr><td>${fdate(m.f)}</td><td><span class="chip ${m.tipo === "Compra" || m.tipo === "Devolución" ? "ok" : m.tipo === "Venta" ? "bad" : "warn"} plain">${m.tipo}</span> ${esc(m.doc)}</td><td>${esc(m.ter)}</td><td class="n up">${m.ent ? "+" + qty(m.ent) : ""}</td><td class="n down">${m.sal ? "−" + qty(m.sal) : ""}</td><td class="n">${money(m.cu)}</td><td class="n"><b>${qty(m.saldo)}</b></td></tr>`).join("")}
     ${pg.st.page >= Math.max(1, Math.ceil(mv.length / pg.st.size)) ? `<tr><td>—</td><td><b>Saldo inicial</b></td><td></td><td></td><td></td><td></td><td class="n"><b>${qty(ini)}</b></td></tr>` : ""}</tbody></table></div>${pg.html(mv.length)}`;
   };
   pg.bind($("[data-out]", el), () => draw());
@@ -2106,13 +2634,13 @@ function roleForm(r) {
     if (store.all("roles").some(x => x.id !== r.id && norm(x.nombre) === norm(nombre))) { F.nombre.classList.add("err"); return toast("Ya existe un rol con ese nombre.", "err"); }
     r.nombre = nombre; r.desc = F.desc.value.trim();
     if (!locked) r.permisos = ["dashboard", ...$$("[data-perm]", F).filter(c => c.checked && c.dataset.perm !== "dashboard").map(c => c.dataset.perm)];
-    store.put("roles", r);
+    store.put("roles", r); audit(nuevo ? "Creó" : "Modificó", "Roles", `${r.nombre}: ${r.sistema ? "todos" : r.permisos.length} permisos`);
     if (!nuevo && old !== nombre) store.all("usuarios").filter(u => u.rol === old).forEach(u => { u.rol = nombre; store.put("usuarios", u); if (u.id === S.user.id) S.user.rol = nombre; });
     m.close(); S.usrTab = "roles"; render(); toast(nuevo ? "Rol creado" : "Rol actualizado");
   };
   m.$("[data-del]")?.addEventListener("click", async () => {
     if (users) return toast(`No se puede eliminar: ${users} ${users === 1 ? "usuario tiene" : "usuarios tienen"} este rol. Cámbiales el rol primero.`, "err");
-    if (await confirmBox(`Se eliminará el rol ${esc(r.nombre)}.`, { ok: "Eliminar rol", danger: true })) { store.del("roles", r.id); m.close(); route(); toast("Rol eliminado"); }
+    if (await confirmBox(`Se eliminará el rol ${esc(r.nombre)}.`, { ok: "Eliminar rol", danger: true })) { store.del("roles", r.id); audit("Eliminó", "Roles", r.nombre); m.close(); route(); toast("Rol eliminado"); }
   });
 }
 function userForm(u) {
@@ -2133,11 +2661,11 @@ function userForm(u) {
     if (!cloud.on && nuevo && !d.pass) return toast("Asigna una contraseña.", "err");
     if (u.rol === "Propietario" && (d.rol !== "Propietario" || !d.activo) && !ownersLeft(u.id)) return toast("Debe quedar al menos un propietario activo.", "err");
     const o = { ...u, nombre: d.nombre, email: d.email, rol: d.rol, activo: d.activo }; if (d.pass) o.passHash = await sha(d.pass);
-    store.put("usuarios", o); m.close(); if (o.id === S.user.id) { S.user = o; render(); } else route(); toast(nuevo ? "Usuario creado" : "Usuario actualizado");
+    store.put("usuarios", o); audit(nuevo ? "Creó" : "Modificó", "Usuarios", `${o.nombre} (${o.email}) · rol ${o.rol}${o.activo ? "" : " · inactivo"}`); m.close(); if (o.id === S.user.id) { S.user = o; render(); } else route(); toast(nuevo ? "Usuario creado" : "Usuario actualizado");
   };
   m.$("[data-del]")?.addEventListener("click", async () => {
     if (u.rol === "Propietario" && !ownersLeft(u.id)) return toast("Debe quedar al menos un propietario activo.", "err");
-    if (await confirmBox(`${esc(u.nombre)} ya no podrá entrar. Sus documentos se conservan.`, { ok: "Eliminar usuario", danger: true })) { store.del("usuarios", u.id); m.close(); route(); toast("Usuario eliminado"); }
+    if (await confirmBox(`${esc(u.nombre)} ya no podrá entrar. Sus documentos se conservan.`, { ok: "Eliminar usuario", danger: true })) { store.del("usuarios", u.id); audit("Eliminó", "Usuarios", u.email); m.close(); route(); toast("Usuario eliminado"); }
   });
 }
 
@@ -2145,7 +2673,7 @@ function userForm(u) {
 VIEWS.config = el => {
   const c = store.config; const tab = S.cfgTab ||= "empresa"; const sb = cloud.cfg() || {};
   el.innerHTML = `<div class="vhead"><div><h1>Configuración</h1><p>Datos de la empresa, apariencia, nube y respaldos.</p></div></div>
-  <div class="tabs" data-tabs>${[["empresa", "Empresa"], ["apariencia", "Apariencia"], ["nube", "Nube"], ["datos", "Respaldo"]].map(([k, l]) => `<button data-t="${k}" class="${tab === k ? "on" : ""}">${l}</button>`).join("")}</div>
+  <div class="tabs" data-tabs>${[["empresa", "Empresa"], ["funciones", "Funciones"], ...(feat("ncf") ? [["ncf", "Comprobantes"]] : []), ...(feat("alertas") ? [["alertas", "Alertas"]] : []), ["apariencia", "Apariencia"], ["nube", "Nube"], ["datos", "Respaldo"]].map(([k, l]) => `<button data-t="${k}" class="${tab === k ? "on" : ""}">${l}</button>`).join("")}</div>
   <div style="max-width:820px">
   ${tab === "empresa" ? `<section class="panel"><form class="grid" data-f>
     <div class="uploader"><div class="prev" data-logo>${c.logo ? `<img src="${c.logo}" alt="Logo">` : brandMark()}</div><div class="grid" style="gap:8px"><label class="btn sm" style="width:max-content">${ic("i-up")}Subir logo<input type="file" accept="image/*" hidden data-file></label>${c.logo ? `<button type="button" class="btn sm ghost" data-nologo>Quitar logo</button>` : ""}<span class="tiny muted">Aparece en el menú, el inicio de sesión y las facturas impresas.</span></div></div>
@@ -2156,6 +2684,18 @@ VIEWS.config = el => {
     <label class="field"><span>Días de crédito por defecto</span><input class="input" type="number" name="diasCredito" value="${c.diasCredito}"></label>
     <label class="field span2"><span>Mensaje al pie de la factura</span><textarea class="input" name="pieFactura" rows="2">${esc(c.pieFactura)}</textarea></label></div>
     <div><button class="btn pri" data-save>Guardar cambios</button></div></form></section>` : ""}
+  ${tab === "funciones" ? `<section class="panel"><header><h2>Funciones del sistema</h2></header><p class="muted" style="margin-top:0">Activa solo lo que el negocio va a usar. Lo que desactives se oculta del menú y de los formularios, pero los datos ya guardados se conservan.</p>
+    <div class="grid" style="gap:12px">${FUNCIONES.map(([k, t, d]) => `<label class="switch" style="align-items:flex-start;padding:12px;border:1px solid var(--line);border-radius:12px"><input type="checkbox" data-fn="${k}" ${feat(k) ? "checked" : ""} style="margin-top:2px"><span><b>${t}</b><br><small class="muted">${d}</small></span></label>`).join("")}</div></section>` : ""}
+  ${tab === "ncf" ? `<section class="panel"><header><h2>Comprobantes fiscales</h2><button class="btn pri sm" data-newseq>${ic("i-plus")}Agregar secuencia</button></header>
+    <div class="field" style="margin-bottom:14px"><span>Tipo de comprobante que emite la empresa</span><div class="seg" data-modo><button data-v="B" class="${c.ncfModo !== "E" ? "on" : ""}">NCF tradicional (B01, B02…)</button><button data-v="E" class="${c.ncfModo === "E" ? "on" : ""}">Electrónico e-CF (E31, E32…)</button></div></div>
+    ${c.ncfModo === "E" ? `<div class="note" style="margin-bottom:14px">${ic("i-alert")}<span>En modo e-CF el sistema numera y guarda los comprobantes electrónicos, pero el envío y la firma ante la DGII se hacen con un proveedor de facturación electrónica autorizado. Esta numeración queda lista para integrarse con él.</span></div>` : ""}
+    ${ncfAlertas().length ? `<div class="note" style="margin-bottom:14px">${ic("i-alert")}<span>${ncfAlertas().map(esc).join("<br>")}</span></div>` : ""}
+    <div class="tbl-wrap"><table class="t cards"><thead><tr><th>Tipo</th><th>Rango autorizado</th><th class="r">Próximo</th><th class="r">Quedan</th><th>Vence</th><th>Estado</th></tr></thead><tbody>${store.all("ncf").slice().sort((a, b) => a.tipo.localeCompare(b.tipo)).map(q => { const r = seqRest(q); const venc = q.vence && q.vence < today(); return `<tr class="click" data-seq="${q.id}"><td class="full"><b>${q.tipo}</b> · ${esc(NCF_TIPOS[q.tipo] || "")}</td><td data-l="Rango">${fmtNCF(q.tipo, q.desde)} – ${fmtNCF(q.tipo, q.hasta)}</td><td class="n" data-l="Próximo">${r ? fmtNCF(q.tipo, q.actual) : "—"}</td><td class="n" data-l="Quedan">${r}</td><td data-l="Vence">${q.vence ? fdate(q.vence) : "—"}</td><td data-l="Estado">${q.activo === false ? `<span class="chip">Inactiva</span>` : venc ? `<span class="chip bad">Vencida</span>` : !r ? `<span class="chip bad">Agotada</span>` : `<span class="chip ok">Vigente</span>`}</td></tr>`; }).join("") || `<tr><td colspan="6" class="empty">Agrega las secuencias que te autorizó la DGII.</td></tr>`}</tbody></table></div></section>` : ""}
+  ${tab === "alertas" ? `<section class="panel"><header><h2>Alertas de stock bajo</h2></header><form class="grid" data-al>
+    <label class="field"><span>WhatsApp que recibe las alertas</span><input class="input" name="whatsapp" value="${esc(c.alertas?.whatsapp || "")}" placeholder="809-000-0000"></label>
+    <label class="field"><span>Correos que reciben las alertas</span><input class="input" name="correo" value="${esc(c.alertas?.correo || "")}" placeholder="dueno@empresa.com, almacen@empresa.com"></label>
+    <label class="switch" style="align-items:flex-start"><input type="checkbox" name="auto" ${c.alertas?.auto ? "checked" : ""} style="margin-top:2px"><span><b>Enviar automáticamente</b><br><small class="muted">Requiere la nube y la función <code>alerta-stock</code> instalada en Supabase (incluida en el paquete). Sin ella, el sistema muestra el aviso con botones para enviarlo por WhatsApp o correo con un toque.</small></span></label>
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn pri" data-sal>Guardar</button><button type="button" class="btn" data-test>Probar con el stock bajo actual</button></div></form></section>` : ""}
   ${tab === "apariencia" ? `<section class="panel"><header><h2>Tema</h2></header><div class="seg" data-theme-seg>${[["light", "Claro", "i-sun"], ["dark", "Oscuro", "i-moon"], ["system", "Igual que el dispositivo", "i-gear"]].map(([k, l]) => `<button data-v="${k}" class="${lsGet("theme", "system") === k ? "on" : ""}">${l}</button>`).join("")}</div>
     <p class="small muted" style="margin:14px 0 0">También puedes cambiarlo con el botón de luna o sol de la barra superior. La preferencia se guarda en este dispositivo.</p></section>
     <section class="panel" style="margin-top:16px"><header><h2>Instalar como aplicación</h2></header><p class="muted" style="margin:0">Cuando el sistema está publicado en Vercel puedes instalarlo: en Android o Chrome usa “Instalar aplicación” o “Agregar a la pantalla de inicio”; en iPhone, Compartir → “Agregar a inicio”. Se abre a pantalla completa, como una app.</p></section>` : ""}
@@ -2174,8 +2714,14 @@ VIEWS.config = el => {
     const F = $("[data-f]", el); let logo = c.logo;
     $("[data-file]", el).onchange = async e => { const f = e.target.files[0]; if (!f) return; try { logo = await compressImage(f, 400); $("[data-logo]", el).innerHTML = `<img src="${logo}" alt="Logo">`; } catch { toast("No se pudo leer la imagen.", "err"); } };
     $("[data-nologo]", el)?.addEventListener("click", () => { logo = ""; $("[data-logo]", el).innerHTML = brandMark(); });
-    $("[data-save]", el).onclick = e => { e.preventDefault(); if (!requireFields(F, ["empresa"])) return; const d = formData(F); store.setConfig({ ...d, itbis: +d.itbis || 0, tasa: +d.tasa || c.tasa, diasCredito: +d.diasCredito || 0, logo }); render(); toast("Datos de la empresa guardados"); };
+    $("[data-save]", el).onclick = e => { e.preventDefault(); if (!requireFields(F, ["empresa"])) return; const d = formData(F); store.setConfig({ ...d, itbis: +d.itbis || 0, tasa: +d.tasa || c.tasa, diasCredito: +d.diasCredito || 0, logo }); audit("Modificó", "Configuración", "Datos de la empresa"); render(); toast("Datos de la empresa guardados"); };
   }
+  $$("[data-fn]", el).forEach(cb => cb.onchange = () => { const fn = { ...(store.config.funciones || {}) }; fn[cb.dataset.fn] = cb.checked; store.setConfig({ funciones: fn }); audit(cb.checked ? "Activó" : "Desactivó", "Configuración", FUNCIONES.find(x => x[0] === cb.dataset.fn)[1]); render(); });
+  $("[data-modo]", el)?.addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; store.setConfig({ ncfModo: b.dataset.v }); audit("Modificó", "Comprobantes", "Modo " + (b.dataset.v === "E" ? "e-CF" : "NCF tradicional")); route(); });
+  $("[data-newseq]", el)?.addEventListener("click", () => seqForm());
+  $$("[data-seq]", el).forEach(tr => tr.onclick = () => seqForm(store.get("ncf", tr.dataset.seq)));
+  $("[data-sal]", el)?.addEventListener("click", e => { e.preventDefault(); const d = formData($("[data-al]", el)); store.setConfig({ alertas: d }); audit("Modificó", "Configuración", "Alertas de stock"); toast("Alertas guardadas"); });
+  $("[data-test]", el)?.addEventListener("click", () => { const L = lowStock(); if (!L.length) return toast("No hay productos con stock bajo ahora mismo."); const d = formData($("[data-al]", el)); store.setConfig({ alertas: d }); alertaStock(L); });
   $("[data-theme-seg]", el)?.addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; lsSet("theme", b.dataset.v); applyTheme(); render(); });
   $("[data-conn]", el)?.addEventListener("click", e => { e.preventDefault(); const d = formData($("[data-sb]", el)); if (!/^https:\/\/.+/.test(d.url) || d.key.length < 20) return toast("Revisa la URL (https://…supabase.co) y la clave anon.", "err"); lsSet("sb", d); lsSet("session", null); location.reload(); });
   $("[data-disc]", el)?.addEventListener("click", async () => { if (await confirmBox("Se dejará de usar la nube en este dispositivo y volverás al modo local.", { ok: "Desconectar" })) { try { await cloud.sb?.auth.signOut(); } catch {} lsSet("sb", null); location.reload(); } });
@@ -2196,6 +2742,20 @@ VIEWS.config = el => {
   });
   $("[data-reset]", el)?.addEventListener("click", async () => { if (await confirmBox("Se borrará todo lo de este navegador y se cargarán los datos de ejemplo.", { ok: "Restablecer", danger: true })) { seed(); lsSet("session", null); S.user = null; location.hash = ""; render(); toast("Demostración restablecida"); } });
 };
+
+function seqForm(q) {
+  const nuevo = !q; const modo = store.config.ncfModo === "E" ? "E" : "B";
+  q = q ? { ...q } : { tipo: modo === "E" ? "E31" : "B01", desde: 1, hasta: 500, actual: 1, vence: addDays(today(), 365), activo: true };
+  const m = modal({ title: nuevo ? "Nueva secuencia de comprobantes" : "Secuencia " + q.tipo, body: `<form class="grid" data-f><label class="field"><span>Tipo</span><select class="input" name="tipo" ${nuevo ? "" : "disabled"}>${Object.entries(NCF_TIPOS).map(([k, l]) => `<option value="${k}" ${q.tipo === k ? "selected" : ""}>${k} · ${l}</option>`).join("")}</select></label>
+    <div class="grid g3"><label class="field"><span>Desde</span><input class="input" type="number" min="1" name="desde" value="${q.desde}"></label><label class="field"><span>Hasta</span><input class="input" type="number" min="1" name="hasta" value="${q.hasta}"></label><label class="field"><span>Próximo a usar</span><input class="input" type="number" min="1" name="actual" value="${q.actual}"></label></div>
+    <label class="field"><span>Vence</span><input class="input" type="date" name="vence" value="${q.vence || ""}"></label>
+    <label class="switch"><input type="checkbox" name="activo" ${q.activo !== false ? "checked" : ""}> Secuencia activa</label><p class="small muted" data-prev style="margin:0"></p></form>`,
+    foot: `${!nuevo && can("eliminar") ? `<button class="btn danger" data-del style="margin-right:auto">${ic("i-trash")}</button>` : ""}<button class="btn" data-close>Cancelar</button><button class="btn pri" data-save>${nuevo ? "Agregar" : "Guardar"}</button>` });
+  const F = m.$("[data-f]"); const prev = () => { const t = F.tipo.value; m.$("[data-prev]").textContent = `Así se verá: ${fmtNCF(t, +F.actual.value || 1)}`; }; F.addEventListener("input", prev); F.addEventListener("change", prev); prev();
+  m.$("[data-save]").onclick = () => { const d = formData(F); d.tipo = F.tipo.value; ["desde", "hasta", "actual"].forEach(k => d[k] = +d[k]); if (!(d.desde >= 1 && d.hasta >= d.desde && d.actual >= d.desde && d.actual <= d.hasta + 1)) return toast("Revisa el rango: desde ≤ próximo ≤ hasta.", "err");
+    store.put("ncf", { ...q, ...d }); audit(nuevo ? "Agregó" : "Modificó", "Comprobantes", `${d.tipo} ${fmtNCF(d.tipo, d.desde)} – ${fmtNCF(d.tipo, d.hasta)}`); m.close(); route(); toast("Secuencia guardada"); };
+  m.$("[data-del]")?.addEventListener("click", async () => { if (await confirmBox("Se eliminará esta secuencia.", { ok: "Eliminar", danger: true })) { store.del("ncf", q.id); m.close(); route(); } });
+}
 
 /* ---------------- Arranque ---------------- */
 async function registerPWA() {

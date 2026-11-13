@@ -12,7 +12,8 @@ Desarrollado por **SP BJ SOFTWARE** · Instagram @bjsoftware · 849-473-3173.
 | `manifest.webmanifest`, `icon-192.png`, `icon-512.png` | Permiten instalarla como app en el celular y en la computadora |
 | `sw.js` | Hace que abra rápido y funcione sin internet (los datos sí necesitan conexión) |
 | `vercel.json` | Encabezados para Vercel |
-| `supabase/schema.sql` | Tabla, permisos por rol y tiempo real en Supabase |
+| `supabase/schema.sql` | Tabla, permisos por rol, tiempo real y funciones atómicas de stock y NCF |
+| `supabase/functions/alerta-stock/` | (Opcional) Envío automático de alertas de stock bajo por correo y WhatsApp |
 
 Sin Supabase configurado, la app arranca en **modo demostración**: carga datos de ejemplo y los guarda solo en ese navegador. Los usuarios de prueba usan la contraseña `demo123`.
 
@@ -64,6 +65,30 @@ Para quitarle el acceso a alguien, desactívalo en **Usuarios y roles**. Tambié
 - **iPhone (Safari):** Compartir → *Agregar a inicio*.
 - **Computadora (Chrome o Edge):** ícono de instalar en la barra de direcciones.
 
+## Funciones opcionales
+
+En **Configuración → Funciones**, el cliente activa solo lo que va a usar. Lo desactivado se oculta del menú y de los formularios, y los datos ya guardados se conservan.
+
+| Función | Qué hace |
+|---|---|
+| Comprobantes fiscales | Asigna NCF (B01, B02, B14, B15, B16, B04) o e-CF (E31, E32, E34, E44, E45, E46) según el cliente. Controla las secuencias autorizadas y su vencimiento, y avisa cuando se agotan. Genera los formatos **606 y 607** en TXT y Excel (Reportes → DGII). El envío de e-CF a la DGII requiere un proveedor de facturación electrónica autorizado. |
+| Documentos de exportación | Datos de embarque en la factura, **Commercial Invoice** en inglés y **Packing List** con pesos netos y brutos. |
+| Lotes y trazabilidad | Cada compra crea un lote con su finca y fecha de cosecha. Las ventas descuentan por lote (primero en entrar, primero en salir), y cada lote muestra a qué clientes se vendió. |
+| Notas de crédito | Devoluciones parciales con NCF B04/E34. Rebajan el saldo o se reembolsan, y la mercancía vuelve al inventario o se registra como merma. |
+| Listas de precios | Precios especiales por cliente, en pesos o dólares. |
+| Conversión de unidades | Se vende y se compra por caja, libra o kilo usando el peso de cada producto. |
+| Cierre de caja | Cuadre diario por efectivo, transferencia, tarjeta y cheque, con faltantes, sobrantes e historial. |
+| Alertas de stock bajo | Aviso con botones para enviarlo por WhatsApp o correo. Con la función `alerta-stock` instalada, el envío es automático. |
+| Bitácora | Registro de quién hizo qué y cuándo, con filtros y exportación. |
+
+Además, cada cliente tiene su **estado de cuenta** (botón en la ficha del cliente), que se puede imprimir, descargar en PDF o Excel y enviar por WhatsApp.
+
+### Alertas automáticas (opcional)
+
+1. Instala la [CLI de Supabase](https://supabase.com/docs/guides/cli) y ejecuta `supabase functions deploy alerta-stock`.
+2. Configura los secretos del canal que vayas a usar: correo con [Resend](https://resend.com) (`RESEND_API_KEY`, `ALERTA_REMITENTE`) y/o WhatsApp Cloud API de Meta (`WA_TOKEN`, `WA_PHONE_ID`, `WA_TEMPLATE`).
+3. En la app, ve a **Configuración → Alertas** y activa "Enviar automáticamente".
+
 ## Notas técnicas
 
 - **Almacenamiento.** Todos los documentos viven en una sola tabla, `registros (coleccion, id, data jsonb)`. Esto permite agregar campos sin migraciones.
@@ -71,4 +96,4 @@ Para quitarle el acceso a alguien, desactívalo en **Usuarios y roles**. Tambié
 - **Reportes y listados.** Cada reporte se puede imprimir, ver en PDF o descargar en Excel/CSV. Los listados de ventas, compras, cotizaciones, clientes, proveedores, productos y kardex se exportan a PDF o Excel respetando los filtros aplicados. PDF y Excel se generan en el navegador con jsPDF y SheetJS (cargados desde cdnjs).
 - **Respaldo.** **Configuración → Respaldo** descarga todo en JSON, fotos incluidas. Hazlo cada semana.
 - **Fotos.** Se comprimen a unos 900 px antes de guardarse.
-- **Límite conocido.** Si dos personas venden el mismo producto en el mismo segundo, el stock final puede quedar desfasado. La siguiente mejora es mover el descuento de stock a una función `rpc` de Postgres.
+- **Concurrencia.** En la nube, el stock y la numeración NCF se actualizan con funciones de Postgres (`mover_stock`, `tomar_ncf`) que bloquean la fila. Así dos ventas simultáneas no descuadran el inventario ni repiten un NCF. Los lotes se actualizan desde el navegador.

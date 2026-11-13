@@ -94,3 +94,53 @@ begin
     alter publication supabase_realtime add table public.registros;
   end if;
 end $$;
+
+-- 5) Existencias atómicas: suma o resta stock dentro de una transacción,
+--    con bloqueo de fila, para que dos ventas simultáneas no se pisen.
+create or replace function public.mover_stock(items jsonb, permitir_negativo boolean default false)
+returns jsonb language plpgsql security invoker set search_path = public as $$
+declare
+  it jsonb; d jsonb; st numeric; co numeric; dl numeric; cu numeric; res jsonb := '[]'::jsonb;
+begin
+  if public.mi_rol() is null then raise exception 'Sin permiso'; end if;
+  for it in select * from jsonb_array_elements(items) loop
+    select data into d from public.registros where coleccion = 'productos' and id = it->>'id' for update;
+    if d is null then raise exception 'Producto no encontrado: %', it->>'id'; end if;
+    st := coalesce((d->>'stock')::numeric, 0);
+    co := coalesce((d->>'costo')::numeric, 0);
+    dl := (it->>'delta')::numeric;
+    cu := nullif(it->>'costo', '')::numeric;
+    if not permitir_negativo and st + dl < 0 then
+      raise exception 'STOCK_INSUFICIENTE:%:%', d->>'nombre', st;
+    end if;
+    if cu is not null and dl > 0 then
+      co := round((greatest(st, 0) * co + dl * cu) / nullif(greatest(st, 0) + dl, 0), 2);
+    end if;
+    d := jsonb_set(d, '{stock}', to_jsonb(round(st + dl, 3)));
+    d := jsonb_set(d, '{costo}', to_jsonb(co));
+    d := jsonb_set(d, '{updated}', to_jsonb((extract(epoch from now()) * 1000)::bigint));
+    update public.registros set data = d, updated_at = now() where coleccion = 'productos' and id = it->>'id';
+    res := res || jsonb_build_array(jsonb_build_object('id', it->>'id', 'stock', d->'stock', 'costo', d->'costo'));
+  end loop;
+  return res;
+end $$;
+
+-- 6) Numeración NCF / e-CF atómica: entrega el siguiente número de una secuencia
+create or replace function public.tomar_ncf(seq_id text)
+returns bigint language plpgsql security invoker set search_path = public as $$
+declare d jsonb; n bigint;
+begin
+  if public.mi_rol() is null then raise exception 'Sin permiso'; end if;
+  select data into d from public.registros where coleccion = 'ncf' and id = seq_id for update;
+  if d is null then raise exception 'Secuencia no encontrada'; end if;
+  n := (d->>'actual')::bigint;
+  if n > (d->>'hasta')::bigint then raise exception 'La secuencia % está agotada', d->>'tipo'; end if;
+  if coalesce(d->>'vence', '') <> '' and (d->>'vence')::date < current_date then raise exception 'La secuencia % está vencida', d->>'tipo'; end if;
+  d := jsonb_set(d, '{actual}', to_jsonb(n + 1));
+  d := jsonb_set(d, '{updated}', to_jsonb((extract(epoch from now()) * 1000)::bigint));
+  update public.registros set data = d, updated_at = now() where coleccion = 'ncf' and id = seq_id;
+  return n;
+end $$;
+
+grant execute on function public.mover_stock(jsonb, boolean) to authenticated;
+grant execute on function public.tomar_ncf(text) to authenticated;
