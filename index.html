@@ -95,7 +95,8 @@ h3{font-size:1rem;font-weight:700}
 .pep-dot svg{width:100%;height:100%;display:block}
 .client-logo{display:flex;justify-content:center;margin-bottom:2px}
 .client-logo svg,.client-logo img{width:clamp(70px,13vh,104px);height:auto;max-height:clamp(100px,19vh,150px);object-fit:contain}
-.login-form{display:flex;align-items:center;justify-content:center;padding:clamp(18px,3vh,36px) 24px;overflow-y:auto;min-height:0}
+.login-form{display:flex;align-items:flex-start;justify-content:center;padding:clamp(14px,3vh,36px) 24px;overflow-y:auto;min-height:0}
+.login-form form{margin:auto 0}
 .login-form form{width:min(400px,100%);display:grid;gap:12px}
 .demo-users{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:6px}
 .demo-users button{display:grid;gap:2px;padding:9px 10px;border:1px dashed var(--line-2);border-radius:var(--r);background:var(--surface-2);cursor:pointer;text-align:left;min-width:0}
@@ -107,6 +108,24 @@ h3{font-size:1rem;font-weight:700}
 .bjword .bj{font-family:var(--display);font-weight:800;color:#F28C1B;letter-spacing:-.02em}
 .bjword .sw{font-family:Georgia,"Times New Roman",serif;color:var(--ink);display:inline-flex;align-items:center}
 .bjword .sw svg{width:.78em;height:.78em;margin:0 .02em;color:var(--ink)}
+@media (min-width:821px) and (max-height:780px){
+  .login-form form{gap:9px}
+  .login-form h1{font-size:1.55rem!important}
+  .login-form .input{height:40px}
+  .login-form .btn.pri{height:42px!important}
+  .client-logo svg,.client-logo img{width:clamp(56px,11vh,84px);max-height:clamp(84px,16vh,124px)}
+  .demo-users button{padding:7px 9px}
+  #loginErr{min-height:0!important}
+  .credit{margin-top:2px}
+  .bjword{font-size:1.15rem}
+}
+@media (min-width:821px) and (max-height:640px){
+  .client-logo svg,.client-logo img{width:52px;max-height:78px}
+  .login-form h1{font-size:1.4rem!important}
+  .login-form p.muted{display:none}
+  .demo-users{margin-top:2px}
+  .login-art .lg-top small{display:none}
+}
 @media (max-width:820px){
   .login{grid-template-columns:1fr;height:auto;min-height:100%;overflow:visible}
   .login-art{display:none}
@@ -190,6 +209,7 @@ h3{font-size:1rem;font-weight:700}
 .field>span{font-size:.82rem;font-weight:600;color:var(--ink-2)}
 .input,select.input,textarea.input{width:100%;height:42px;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);outline:none;transition:border-color .15s,box-shadow .15s}
 textarea.input{height:auto;min-height:80px;padding:10px 12px;resize:vertical}
+input[data-num]{text-align:right;font-variant-numeric:tabular-nums}
 .input:focus{border-color:var(--brand);box-shadow:0 0 0 3px color-mix(in srgb,var(--brand) 20%,transparent)}
 .input.err{border-color:var(--chili)}
 .grid{display:grid;gap:14px}
@@ -1169,9 +1189,46 @@ function confirmBox(msg, { ok = "Confirmar", danger = false, title = "¿Seguro?"
     obs.observe(document.body, { childList: true });
   });
 }
+/* Campos numéricos con formato ###,###,###.##
+   Se escriben y se ven con separadores de miles; el sistema lee siempre el número limpio. */
+const NATIVE_VALUE = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value");
+const numRule = el => { if (el.dataset.num) return el.dataset.num.split("-").map(Number); const st = el.getAttribute("step"); return st === "any" ? [0, 3] : st === "0.001" ? [2, 3] : st === "0.01" || st === "1000" ? [2, 2] : st === "0.5" ? [0, 2] : [0, 0]; };
+const fmtNum = (raw, [mn, mx]) => { if (raw === "" || raw == null) return ""; const n = Number(String(raw).replace(/,/g, "")); return isFinite(n) ? n.toLocaleString("en-US", { minimumFractionDigits: mn, maximumFractionDigits: mx }) : String(raw); };
+function numerizar(el) {
+  if (el.dataset.num) return;
+  const raw = NATIVE_VALUE.get.call(el), rule = numRule(el);
+  el.type = "text"; el.dataset.num = rule.join("-"); el.inputMode = rule[1] ? "decimal" : "numeric"; el.autocomplete = "off";
+  Object.defineProperty(el, "value", { configurable: true,
+    get() { return NATIVE_VALUE.get.call(this).replace(/,/g, ""); },
+    set(v) { NATIVE_VALUE.set.call(this, fmtNum(v, numRule(this))); } });
+  el.value = raw;
+}
+const numerizarTodo = root => (root.querySelectorAll ? root.querySelectorAll('input[type="number"]') : []).forEach(numerizar);
+new MutationObserver(ms => ms.forEach(m => m.addedNodes.forEach(n => { if (n.nodeType !== 1) return; if (n.matches?.('input[type="number"]')) numerizar(n); else numerizarTodo(n); }))).observe(document.documentElement, { childList: true, subtree: true });
+document.addEventListener("input", e => {
+  const el = e.target; if (!(el instanceof HTMLInputElement) || !el.dataset.num) return;
+  const mx = numRule(el)[1]; const v = NATIVE_VALUE.get.call(el); const caret = el.selectionStart ?? v.length;
+  const sig = v.slice(0, caret).replace(/[^\d.\-]/g, "").length;
+  let clean = v.replace(/[^\d.\-]/g, ""); const neg = clean.startsWith("-"); clean = clean.replace(/-/g, "");
+  const dot = mx > 0 && clean.includes("."); let [int, ...rest] = clean.split("."); let dec = mx > 0 ? rest.join("").slice(0, mx) : "";
+  int = int.replace(/^0+(?=\d)/, "").replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  const out = (neg ? "-" : "") + (int || (dot ? "0" : "")) + (dot ? "." + dec : "");
+  if (out === v) return;
+  NATIVE_VALUE.set.call(el, out);
+  let n = 0, pos = 0; while (pos < out.length && n < sig) { if (/[\d.\-]/.test(out[pos])) n++; pos++; }
+  try { el.setSelectionRange(pos, pos); } catch {}
+}, true);
+document.addEventListener("keydown", e => {
+  const el = e.target; if (!(el instanceof HTMLInputElement) || !el.dataset.num || el.selectionStart !== el.selectionEnd) return;
+  const v = NATIVE_VALUE.get.call(el), i = el.selectionStart;
+  if (e.key === "Backspace" && v[i - 1] === ",") el.setSelectionRange(i - 1, i - 1);
+  if (e.key === "Delete" && v[i] === ",") el.setSelectionRange(i + 1, i + 1);
+}, true);
+document.addEventListener("focusout", e => { const el = e.target; if (el instanceof HTMLInputElement && el.dataset.num) { const r = el.value; if (r !== "" && r !== "-") NATIVE_VALUE.set.call(el, fmtNum(r, numRule(el))); } }, true);
+
 function formData(root) {
   const o = {};
-  $$("[name]", root).forEach(el => { if (el.type === "checkbox") o[el.name] = el.checked; else if (el.type === "radio") { if (el.checked) o[el.name] = el.value; } else o[el.name] = el.type === "number" ? (el.value === "" ? "" : +el.value) : el.value.trim(); });
+  $$("[name]", root).forEach(el => { if (el.type === "checkbox") o[el.name] = el.checked; else if (el.type === "radio") { if (el.checked) o[el.name] = el.value; } else o[el.name] = el.type === "number" || el.dataset.num != null ? (el.value === "" ? "" : +el.value) : el.value.trim(); });
   return o;
 }
 function requireFields(root, names) {
@@ -1315,7 +1372,7 @@ function render() {
 }
 
 /* ---------------- Login ---------------- */
-const APP_VERSION = "2026.11.13-6";
+const APP_VERSION = "2026.11.13-7";
 const VENDOR = { nombre: "SP BJ SOFTWARE", instagram: "@bjsoftware", telefono: "849-473-3173" };
 /* Logo de BJ Software: hexágono con cubo */
 const bjHex = (size = 40) => `<svg viewBox="0 0 64 64" width="${size}" height="${size}" role="img" aria-label="BJ Software"><polygon points="32,5 55.4,18.5 55.4,45.5 32,59 8.6,45.5 8.6,18.5" fill="none" stroke="#F28C1B" stroke-width="5" stroke-linejoin="round"/><polygon points="32,19 43.5,25.5 32,32 20.5,25.5" fill="#FFB65C"/><polygon points="20.5,25.5 32,32 32,45 20.5,38.5" fill="#F59B2E"/><polygon points="43.5,25.5 32,32 32,45 43.5,38.5" fill="#DB720C"/></svg>`;
