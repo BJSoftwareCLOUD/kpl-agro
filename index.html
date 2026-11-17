@@ -997,10 +997,11 @@ async function login(email, pass) {
   S.user = u; lsSet("session", { id: u.id }); audit("Entró", "Sesión", u.email);
 }
 async function revisarBase() {
-  const faltante = ({ error }) => error && (error.code === "PGRST202" || error.code === "42883" || /Could not find the function|does not exist/i.test(error.message || ""));
+  // Revisión silenciosa: la función mi_rol y la tabla contadores solo existen si schema.sql se ejecutó completo
   const seguro = pr => Promise.resolve(pr).catch(e => ({ error: { message: String(e?.message || e) } }));
-  const [a, b] = await Promise.all([seguro(cloud.sb.rpc("mi_rol")), seguro(cloud.sb.rpc("tomar_ncf", { seq_id: "__revision__" }))]);
-  if (faltante(a) || faltante(b)) throw new Error("La base de datos de Supabase no está completa: falta ejecutar supabase/schema.sql. Pégalo completo en SQL Editor → Run, revisa con supabase/verificar.sql y vuelve a entrar.");
+  const [a, b] = await Promise.all([seguro(cloud.sb.rpc("mi_rol")), seguro(cloud.sb.from("contadores").select("coleccion").limit(1))]);
+  const falta = ({ error }) => error && (["PGRST202", "PGRST205", "42883", "42P01"].includes(error.code) || /Could not find|does not exist/i.test(error.message || ""));
+  if (falta(a) || falta(b)) throw new Error("La base de datos de Supabase no está completa: falta ejecutar supabase/schema.sql. Pégalo completo en SQL Editor → Run, revisa con supabase/verificar.sql y vuelve a entrar.");
 }
 async function afterCloudAuth(email) {
   try { await revisarBase(); } catch (x) { try { await cloud.sb.auth.signOut(); } catch {} throw x; }
@@ -1399,7 +1400,7 @@ function render() {
 }
 
 /* ---------------- Login ---------------- */
-const APP_VERSION = "2026.11.17-2";
+const APP_VERSION = "2026.11.17-3";
 const VENDOR = { nombre: "SP BJ SOFTWARE", instagram: "@bjsoftware", telefono: "849-473-3173" };
 /* Logo de BJ Software: hexágono con cubo */
 const bjHex = (size = 40) => `<svg viewBox="0 0 64 64" width="${size}" height="${size}" role="img" aria-label="BJ Software"><polygon points="32,5 55.4,18.5 55.4,45.5 32,59 8.6,45.5 8.6,18.5" fill="none" stroke="#F28C1B" stroke-width="5" stroke-linejoin="round"/><polygon points="32,19 43.5,25.5 32,32 20.5,25.5" fill="#FFB65C"/><polygon points="20.5,25.5 32,32 32,45 20.5,38.5" fill="#F59B2E"/><polygon points="43.5,25.5 32,32 32,45 43.5,38.5" fill="#DB720C"/></svg>`;

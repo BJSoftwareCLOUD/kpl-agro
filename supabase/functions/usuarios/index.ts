@@ -18,14 +18,14 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
 const DOMINIO = Deno.env.get("USUARIOS_DOMINIO") ?? "kpl.local"; // debe coincidir con USUARIO_DOMINIO en index.html
-const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type" };
+const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "POST, OPTIONS", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-api-version", "Access-Control-Max-Age": "86400" };
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json" } });
 const aEmail = (u: string) => { const s = String(u ?? "").trim().toLowerCase(); return s.includes("@") ? s : `${s}@${DOMINIO}`; };
 const usuarioValido = (u: string) => { const s = String(u ?? "").trim().toLowerCase(); return s.includes("@") ? /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s) : /^[a-z0-9][a-z0-9._-]{2,39}$/.test(s); };
 const claveValida = (c: string) => typeof c === "string" && c.length >= 8 && /[a-zA-Z]/.test(c) && /\d/.test(c);
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
+  if (req.method === "OPTIONS") return new Response("ok", { status: 200, headers: cors });
   try {
     const url = Deno.env.get("SUPABASE_URL")!;
     const auth = req.headers.get("Authorization") ?? "";
