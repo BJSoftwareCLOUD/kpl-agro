@@ -98,6 +98,8 @@ h3{font-size:1rem;font-weight:700}
 .login-form{display:flex;align-items:flex-start;justify-content:center;padding:clamp(14px,3vh,36px) 24px;overflow-y:auto;min-height:0}
 .login-form form{margin:auto 0}
 .login-form form{width:min(400px,100%);display:grid;gap:12px}
+.first{min-height:100%;display:grid;place-items:center;padding:24px;background:var(--bg)}
+.first-card{width:min(440px,100%);background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:28px;display:grid;gap:12px;box-shadow:var(--shadow)}
 .demo-users{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:6px}
 .demo-users button{display:grid;gap:2px;padding:9px 10px;border:1px dashed var(--line-2);border-radius:var(--r);background:var(--surface-2);cursor:pointer;text-align:left;min-width:0}
 .demo-users button b{font-size:.84rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -632,8 +634,7 @@ const photo = (p, big) => p?.foto ? `<img src="${p.foto}" alt="${esc(p.nombre)}"
 /* ---------------- Almacenamiento ---------------- */
 const COLS = ["productos", "clientes", "proveedores", "compras", "ventas", "cotizaciones", "ordenes", "gastos", "presupuestos", "ajustes", "usuarios", "roles", "notas", "lotes", "listas", "cajas", "bitacora", "ncf"];
 const defaultConfig = () => ({
-  empresa: "KPL AGRO", rnc: "1-31-00000-0", direccion: "Autopista Duarte Km 4, Santiago, República Dominicana",
-  telefono: "809-000-0000", email: "ventas@kplagro.com", itbis: 18, tasa: 62.5, logo: "",
+  empresa: "KPL AGRO", rnc: "", direccion: "", telefono: "", email: "", itbis: 18, tasa: 62.5, logo: "",
   pieFactura: "Gracias por su compra. Productos frescos sujetos a disponibilidad de cosecha.",
   diasCredito: 30, ncfModo: "B", funciones: {}, alertas: { whatsapp: "", correo: "", auto: false }
 });
@@ -825,7 +826,7 @@ function seed() {
   U("José Almonte", "almacen@kplagro.com", "Almacén");
 
   D.roles = DEFAULT_ROLES();
-  const cfg = defaultConfig();
+  const cfg = { ...defaultConfig(), rnc: "1-31-00000-0", direccion: "Autopista Duarte Km 4, Santiago, República Dominicana", telefono: "809-000-0000", email: "ventas@kplagro.com" };
   const prods = D.productos.filter(p => p.categoria !== "Empaque");
   const now = new Date(); const base = new Date(now.getFullYear(), now.getMonth() - 11, 1);
   let vn = 1001, cn = 501;
@@ -958,6 +959,7 @@ const PERM_NEEDS = { "venta-nueva": "ventas", "cotizacion-nueva": "cotizaciones"
 const DEFAULT_ROLES = () => [
   { id: "rol-propietario", nombre: "Propietario", desc: "Ve y administra todo. Siempre tiene todos los permisos.", permisos: ALL_PERMS.slice(), sistema: true },
   { id: "rol-vendedor", nombre: "Vendedor", desc: "Factura, cotiza, cobra y atiende clientes. Consulta productos y órdenes.", permisos: ["dashboard", "ventas", "venta-nueva", "notas", "notas.crear", "cotizaciones", "cotizacion-nueva", "ordenes", "clientes", "listas", "productos", "pagos", "caja", "caja.cerrar"] },
+  { id: "rol-contabilidad", nombre: "Contabilidad", desc: "Consulta ventas, compras, cobros, caja y reportes (incluido DGII). No factura ni modifica inventario.", permisos: ["dashboard", "ventas", "notas", "cotizaciones", "clientes", "compras", "proveedores", "productos", "kardex", "lotes", "caja", "presupuesto", "reportes", "bitacora", "finanzas.ver"] },
   { id: "rol-almacen", nombre: "Almacén", desc: "Registra compras y mantiene productos, existencias, proveedores y kardex.", permisos: ["dashboard", "compras", "compra-nueva", "productos", "productos.editar", "inventario.ajustar", "proveedores", "lotes", "ordenes", "kardex"] }
 ];
 const roleOf = name => store.all("roles").find(r => r.nombre === name) || DEFAULT_ROLES().find(r => r.nombre === name);
@@ -965,15 +967,32 @@ const isOwner = () => S.user?.rol === "Propietario";
 const can = p => { if (!S.user) return false; const r = roleOf(S.user.rol); if (!r) return false; if (r.sistema || p === "dashboard") return true; return r.permisos.includes(p); };
 const canEditProducts = () => can("productos.editar");
 
+const USUARIO_DOMINIO = "kpl.local"; // debe coincidir con USUARIOS_DOMINIO de la función "usuarios"
+const aEmail = u => { const s = String(u || "").trim().toLowerCase(); return s.includes("@") ? s : `${s}@${USUARIO_DOMINIO}`; };
+const usuarioDe = u => u?.usuario || (u?.email?.endsWith("@" + USUARIO_DOMINIO) ? u.email.split("@")[0] : u?.email || "");
+const usuarioValido = u => { const s = String(u || "").trim().toLowerCase(); return s.includes("@") ? /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s) : /^[a-z0-9][a-z0-9._-]{2,39}$/.test(s); };
+const claveValida = c => typeof c === "string" && c.length >= 8 && /[a-zA-Z]/.test(c) && /\d/.test(c);
+const genClave = () => { const L = "abcdefghjkmnpqrstuvwxyz"; const r = n => crypto.getRandomValues(new Uint32Array(1))[0] % n; return "Kpl-" + String(1000 + r(9000)) + "-" + [0, 1, 2].map(() => L[r(L.length)]).join(""); };
+async function fnUsuarios(body) {
+  const { data, error } = await cloud.sb.functions.invoke("usuarios", { body });
+  if (error) {
+    let msg = error.message || "Error"; const st = error.context?.status;
+    try { const j = await error.context.json(); msg = j.error || j.message || msg; } catch {}
+    if (st === 404 || /not.?found|Failed to send|FunctionsFetchError|FunctionsRelayError/i.test(msg + " " + (error.name || ""))) msg = "La función «usuarios» no está instalada en Supabase. Instálala siguiendo el paso 3 del README (Instalar las funciones).";
+    throw new Error(msg);
+  }
+  if (data?.error) throw new Error(data.error);
+  return data;
+}
 async function login(email, pass) {
-  email = email.trim().toLowerCase();
+  email = aEmail(email);
   if (cloud.on) {
     const { error } = await cloud.sb.auth.signInWithPassword({ email, password: pass });
-    if (error) throw new Error(error.message === "Invalid login credentials" ? "Correo o contraseña incorrectos." : error.message);
+    if (error) throw new Error(error.message === "Invalid login credentials" ? "Usuario o contraseña incorrectos." : error.message);
     await afterCloudAuth(email); audit("Entró", "Sesión", email); return;
   }
   const u = store.all("usuarios").find(x => x.email.toLowerCase() === email);
-  if (!u || u.passHash !== await sha(pass)) throw new Error("Correo o contraseña incorrectos.");
+  if (!u || u.passHash !== await sha(pass)) throw new Error("Usuario o contraseña incorrectos.");
   if (!u.activo) throw new Error("Este usuario está desactivado. Habla con el propietario.");
   S.user = u; lsSet("session", { id: u.id }); audit("Entró", "Sesión", u.email);
 }
@@ -981,7 +1000,7 @@ async function afterCloudAuth(email) {
   await cloud.pull();
   let u = store.all("usuarios").find(x => x.email.toLowerCase() === email);
   if (!u && store.all("usuarios").length === 0) {
-    S.user = { id: uid(), nombre: email.split("@")[0], email, rol: "Propietario", activo: true };
+    S.user = { id: uid(), nombre: email.split("@")[0], email, usuario: usuarioDe({ email }), rol: "Propietario", activo: true };
     store.put("usuarios", S.user);
     u = S.user;
   }
@@ -1325,7 +1344,7 @@ function shellHTML() {
   <aside class="side" aria-label="Menú principal">
     <div class="brand"><div class="mark">${brandMark()}</div><div><b data-empresa>${esc(store.config.empresa)}</b><small>Ventas y exportación</small></div></div>
     <nav class="nav">${navHTML}</nav>
-    <div class="side-user"><div class="avatar">${initials(S.user.nombre)}</div><div class="who"><b>${esc(S.user.nombre)}</b><small>${esc(S.user.rol)}</small></div><button data-act="logout" title="Cerrar sesión" aria-label="Cerrar sesión">${ic("i-out")}</button></div>
+    <div class="side-user"><div class="avatar">${initials(S.user.nombre)}</div><div class="who" data-act="cuenta" title="Mi cuenta: cambiar usuario y contraseña" style="cursor:pointer"><b>${esc(S.user.nombre)}</b><small>${esc(S.user.rol)} · Mi cuenta</small></div><button data-act="logout" title="Cerrar sesión" aria-label="Cerrar sesión">${ic("i-out")}</button></div>
   </aside>
   <div class="scrim" data-act="menu"></div>
   <div class="main">
@@ -1353,7 +1372,7 @@ function updateBadges() {
   $$("[data-late]").forEach(e => { e.textContent = late || ""; e.style.display = late ? "" : "none"; });
 }
 function route() {
-  if (!S.user) return render();
+  if (!S.user || S.user.debeCambiar || !$("#view")) return render();
   let v = decodeURIComponent(location.hash.slice(1)) || "dashboard";
   if (!VIEWS[v] || !can(v) || !viewOn(v)) v = "dashboard";
   $$(".modal-bg").forEach(m => m._close ? m._close() : m.remove());
@@ -1368,11 +1387,12 @@ function route() {
 function render() {
   const root = $("#root");
   if (!S.user) { root.innerHTML = loginHTML(); bindLogin(); return; }
+  if (S.user.debeCambiar) { root.innerHTML = primerIngresoHTML(); bindPrimerIngreso(); return; }
   root.innerHTML = shellHTML(); route();
 }
 
 /* ---------------- Login ---------------- */
-const APP_VERSION = "2026.11.13-7";
+const APP_VERSION = "2026.11.17-1";
 const VENDOR = { nombre: "SP BJ SOFTWARE", instagram: "@bjsoftware", telefono: "849-473-3173" };
 /* Logo de BJ Software: hexágono con cubo */
 const bjHex = (size = 40) => `<svg viewBox="0 0 64 64" width="${size}" height="${size}" role="img" aria-label="BJ Software"><polygon points="32,5 55.4,18.5 55.4,45.5 32,59 8.6,45.5 8.6,18.5" fill="none" stroke="#F28C1B" stroke-width="5" stroke-linejoin="round"/><polygon points="32,19 43.5,25.5 32,32 20.5,25.5" fill="#FFB65C"/><polygon points="20.5,25.5 32,32 32,45 20.5,38.5" fill="#F59B2E"/><polygon points="43.5,25.5 32,32 32,45 43.5,38.5" fill="#DB720C"/></svg>`;
@@ -1404,7 +1424,7 @@ function loginHTML() {
     <form id="loginForm" novalidate>
       <div class="client-logo">${store.config.logo ? `<img src="${store.config.logo}" alt="${esc(store.config.empresa)}">` : kplLogo(true)}</div>
       <div><h1 style="font-size:1.8rem">Iniciar sesión</h1><p class="muted" style="margin:4px 0 0">Ingresa tus credenciales para continuar.</p></div>
-      <label class="field"><span>Correo</span><input class="input" name="email" type="email" autocomplete="username" required></label>
+      <label class="field"><span>Usuario</span><input class="input" name="email" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="tu.usuario" required></label>
       <label class="field"><span>Contraseña</span><input class="input" name="pass" type="password" autocomplete="current-password" required></label>
       <p class="small" id="loginErr" style="color:var(--chili);margin:0;min-height:1.2em" role="alert"></p>
       <button class="btn pri" style="height:46px">Entrar</button>
@@ -1418,12 +1438,65 @@ function bindLogin() {
   const f = $("#loginForm");
   f.addEventListener("submit", async e => {
     e.preventDefault(); const { email, pass } = formData(f); const err = $("#loginErr"); err.textContent = "";
-    if (!email || !pass) { err.textContent = "Escribe tu correo y tu contraseña."; return; }
+    if (!email || !pass) { err.textContent = "Escribe tu usuario y tu contraseña."; return; }
     const b = f.querySelector(".btn.pri"); b.disabled = true; b.textContent = "Entrando…";
     try { await login(email, pass); if (!location.hash) location.hash = "dashboard"; render(); toast("Hola, " + S.user.nombre.split(" ")[0]); }
     catch (x) { err.textContent = x.message; b.disabled = false; b.textContent = "Entrar"; }
   });
   $$("[data-demo]").forEach(b => b.onclick = () => { f.email.value = b.dataset.demo; f.pass.value = "demo123"; f.requestSubmit(); });
+}
+
+/* ---------------- Primer ingreso y "Mi cuenta" ---------------- */
+const credCampos = (usuario, forzado) => `<label class="field"><span>${forzado ? "Elige tu usuario" : "Usuario"}</span><input class="input" name="usuario" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" value="${esc(usuario)}"></label>
+  <label class="field"><span>${forzado ? "Elige tu contraseña" : "Nueva contraseña"}</span><input class="input" name="clave" type="password" autocomplete="new-password"></label>
+  <label class="field"><span>Repite la contraseña</span><input class="input" name="clave2" type="password" autocomplete="new-password"></label>
+  <p class="tiny muted" style="margin:0">El usuario puede ser una palabra (ej. <b>maria.ventas</b>) o un correo. La contraseña debe tener al menos 8 caracteres, con letras y números.</p>`;
+function leerCred(F) {
+  const usuario = F.usuario.value.trim().toLowerCase(), clave = F.clave.value, clave2 = F.clave2.value;
+  if (!usuarioValido(usuario)) throw new Error("Usuario no válido: usa letras, números, punto o guion (mínimo 3), o un correo.");
+  if (!claveValida(clave)) throw new Error("La contraseña debe tener al menos 8 caracteres, con letras y números.");
+  if (clave !== clave2) throw new Error("Las contraseñas no coinciden.");
+  return { usuario, clave };
+}
+async function cambiarCredenciales(usuario, clave) {
+  if (cloud.on) {
+    const r = await fnUsuarios({ accion: "credenciales", usuario, clave });
+    const { error } = await cloud.sb.auth.signInWithPassword({ email: r.email, password: clave });
+    if (error) throw new Error("El cambio se guardó, pero no se pudo volver a entrar: " + error.message);
+    await afterCloudAuth(r.email);
+  } else {
+    const email = aEmail(usuario);
+    if (store.all("usuarios").some(x => x.id !== S.user.id && x.email.toLowerCase() === email)) throw new Error("Ese usuario ya está en uso. Elige otro.");
+    const u = store.get("usuarios", S.user.id); u.email = email; u.usuario = usuario; u.passHash = await sha(clave); u.debeCambiar = false;
+    store.put("usuarios", u); S.user = u; audit("Cambió", "Usuarios", "su usuario y contraseña de acceso");
+  }
+}
+function primerIngresoHTML() {
+  return `<div class="first"><form class="first-card" id="firstForm" novalidate>
+    <div class="client-logo">${store.config.logo ? `<img src="${store.config.logo}" alt="${esc(store.config.empresa)}">` : kplLogo(true)}</div>
+    <div><h1 style="font-size:1.6rem">Bienvenido, ${esc(S.user.nombre.split(" ")[0])}</h1><p class="muted" style="margin:6px 0 0">Entraste con un usuario y una contraseña temporales. Por seguridad, elige los tuyos para continuar.</p></div>
+    ${credCampos(usuarioDe(S.user), true)}
+    <p class="small" id="firstErr" style="color:var(--chili);margin:0;min-height:1.2em" role="alert"></p>
+    <button class="btn pri" style="height:46px">Guardar y entrar</button>
+    <button type="button" class="btn ghost" data-act="logout">Salir</button>
+    <div class="credit">${bjWordmark()}</div></form></div>`;
+}
+function bindPrimerIngreso() {
+  const F = $("#firstForm"); setTimeout(() => F.clave.focus(), 50);
+  F.addEventListener("submit", async e => {
+    e.preventDefault(); const err = $("#firstErr"); err.textContent = ""; const b = F.querySelector(".btn.pri");
+    try { const { usuario, clave } = leerCred(F); b.disabled = true; b.textContent = "Guardando…"; await cambiarCredenciales(usuario, clave); render(); toast("Listo. Desde ahora entras con el usuario «" + usuario + "».") }
+    catch (x) { err.textContent = x.message; b.disabled = false; b.textContent = "Guardar y entrar"; }
+  });
+}
+function miCuenta() {
+  const m = modal({ title: "Mi cuenta", size: "narrow", body: `<form class="grid" data-f><div class="cell-main"><span class="avatar">${initials(S.user.nombre)}</span><span><b>${esc(S.user.nombre)}</b><small>${esc(S.user.rol)}</small></span></div>${credCampos(usuarioDe(S.user), false)}</form>`,
+    foot: `<button class="btn" data-close>Cancelar</button><button class="btn pri" data-save>Guardar cambios</button>` });
+  m.$("[data-save]").onclick = async () => {
+    const b = m.$("[data-save]");
+    try { const { usuario, clave } = leerCred(m.$("[data-f]")); b.disabled = true; await cambiarCredenciales(usuario, clave); m.close(); render(); toast("Tu usuario y contraseña se actualizaron."); }
+    catch (x) { toast(x.message, "err"); b.disabled = false; }
+  };
 }
 
 /* ---------------- Paleta de comandos (Ctrl+K) ---------------- */
@@ -1470,6 +1543,7 @@ document.addEventListener("click", e => {
   if (act === "menu") $(".app")?.classList.toggle("menu");
   else if (act === "theme") toggleTheme();
   else if (act === "palette") palette();
+  else if (act === "cuenta") miCuenta();
   else if (act === "online") presenceModal();
   else if (act === "logout") confirmBox("Se cerrará tu sesión en este dispositivo.", { ok: "Cerrar sesión" }).then(y => y && logout());
 });
@@ -1571,12 +1645,24 @@ VIEWS.dashboard = el => {
   const otHTML = `<section class="panel flush"><header><h2>Próximas entregas</h2><a class="btn sm ghost" href="#ordenes">Ver tablero</a></header><div class="feed">${ots.map(o => `<a href="#ordenes"><span class="ic" style="background:var(--surface-2)">${ic("i-board")}</span><span><b>${esc(o.titulo)}</b><small>${esc(cliente(o.clienteId).nombre)} · ${esc(o.estado)}</small></span><span class="small ${o.entrega < t ? "down" : "muted"}" style="font-weight:700">${o.entrega < t ? "Atrasada" : fdate(o.entrega)}</span></a>`).join("") || `<div class="empty">Sin órdenes pendientes.</div>`}</div></section>`;
   const ncfA = can("config") ? ncfAlertas() : [];
   const alertHTML = ncfA.length ? `<div class="note" style="margin-bottom:16px">${ic("i-alert")}<span><b>Comprobantes fiscales:</b> ${ncfA.map(esc).join(" ")} <a href="#config" data-gocfg style="color:inherit;font-weight:700">Revisar</a></span></div>` : "";
-  el.innerHTML = alertHTML + `<div class="hello"><div><h1>${saludo}, ${esc(S.user.nombre.split(" ")[0])}</h1><p class="muted" style="margin:4px 0 0">${new Date().toLocaleDateString("es-DO", { weekday: "long", day: "numeric", month: "long" })}</p></div><div class="quick">${quick}</div></div>
+  const pasos = can("config") ? [
+    ["Datos de la empresa", "RNC, dirección, teléfono y logo para las facturas", !!(store.config.rnc && store.config.direccion && store.config.telefono), "config", "empresa"],
+    ...(feat("ncf") ? [["Comprobantes fiscales", "Secuencias NCF autorizadas por la DGII", store.all("ncf").length > 0, "config", "ncf"]] : []),
+    ["Usuarios del equipo", "Propietario, facturación y demás accesos", store.all("usuarios").length > 1, "usuarios"],
+    ["Productos", "Catálogo con precios, costos y existencias", store.all("productos").length > 0, "productos"],
+    ["Clientes", "Clientes locales y de exportación", store.all("clientes").length > 0, "clientes"],
+    ["Proveedores", "Fincas y suplidores", store.all("proveedores").length > 0, "proveedores"]] : [];
+  const faltan = pasos.filter(x => !x[2]).length;
+  const setupHTML = faltan ? `<section class="panel" style="margin-bottom:16px"><header><h2>Puesta en marcha</h2><span class="small muted">${pasos.length - faltan} de ${pasos.length} listos</span></header>
+    <div class="track" style="margin-bottom:14px"><i style="width:${(pasos.length - faltan) / pasos.length * 100}%"></i></div>
+    <div class="grid g3">${pasos.map(([t, d, ok, v, tab]) => `<a href="#${v}" data-setup="${tab || ""}" style="display:flex;gap:10px;align-items:flex-start;padding:12px;border:1px solid var(--line);border-radius:12px;text-decoration:none;color:inherit;${ok ? "opacity:.6" : ""}"><span class="avatar" style="width:28px;height:28px;background:${ok ? "var(--brand)" : "var(--surface-3)"};color:${ok ? "#fff" : "var(--muted)"}">${ok ? ic("i-check") : "·"}</span><span><b>${t}</b><br><small class="muted">${d}</small></span></a>`).join("")}</div></section>` : "";
+  el.innerHTML = alertHTML + setupHTML + `<div class="hello"><div><h1>${saludo}, ${esc(S.user.nombre.split(" ")[0])}</h1><p class="muted" style="margin:4px 0 0">${new Date().toLocaleDateString("es-DO", { weekday: "long", day: "numeric", month: "long" })}</p></div><div class="quick">${quick}</div></div>
     <div class="kpis">${kpis}</div>
     <div class="dash"><div class="col">${chart}${feed}</div><div class="col">${liveHTML}${topHTML}${lowHTML}${otHTML}</div></div>`;
   $$("[data-feed]", el).forEach(a => a.onclick = () => { const x = acts[+a.dataset.feed]; if (x.k === "venta") ventaDetail(x.d); else if (x.k === "compra") compraDetail(x.d); else cotDetail(x.d); });
   $$("[data-lowp]", el).forEach(a => a.onclick = () => lightbox(producto(a.dataset.lowp)));
   $("[data-gocfg]", el)?.addEventListener("click", () => { S.cfgTab = "ncf"; });
+  $$("[data-setup]", el).forEach(a => a.addEventListener("click", () => { if (a.dataset.setup) S.cfgTab = a.dataset.setup; }));
 };
 
 /* ---------------- Productos ---------------- */
@@ -2784,9 +2870,9 @@ VIEWS.usuarios = el => {
   const draw = () => {
     if (tab === "usuarios") {
       const U = store.all("usuarios").slice().sort((a, b) => a.nombre.localeCompare(b.nombre));
-      out.innerHTML = `${cloud.on ? `<div class="note" style="margin-bottom:14px">${ic("i-cloud")}<span>Modo nube: crea primero el acceso del empleado en Supabase (Authentication → Users) con su correo y contraseña, y luego agrégalo aquí con el mismo correo para asignarle el rol.</span></div>` : ""}
+      out.innerHTML = `<div class="note ok" style="margin-bottom:14px">${ic("i-shield")}<span>Crea aquí cada usuario con un usuario y una contraseña temporales. Al entrar por primera vez, la persona elige los suyos. Cada quien puede cambiarlos luego en <b>Mi cuenta</b> (toca tu nombre abajo a la izquierda).</span></div>
       <div class="tbl-wrap"><table class="t cards"><thead><tr><th>Usuario</th><th>Rol</th><th>Estado</th><th class="r">Facturas emitidas</th></tr></thead><tbody>
-      ${pg.slice(U).map(u => `<tr class="click" data-id="${u.id}"><td class="full"><div class="cell-main"><span class="avatar" style="background:${roleColor(u.rol)}">${initials(u.nombre)}</span><span><b>${esc(u.nombre)}${u.id === S.user.id ? " (tú)" : ""}</b><small>${esc(u.email)}</small></span></div></td><td data-l="Rol">${esc(u.rol)}${roleOf(u.rol) ? "" : ` <span class="chip bad">Rol eliminado</span>`}</td><td data-l="Estado">${u.activo ? `<span class="chip ok">Activo</span>` : `<span class="chip bad">Inactivo</span>`}</td><td class="n" data-l="Facturas">${store.all("ventas").filter(v => v.usuario === u.nombre).length}</td></tr>`).join("")}</tbody></table></div>${pg.html(U.length)}`;
+      ${pg.slice(U).map(u => `<tr class="click" data-id="${u.id}"><td class="full"><div class="cell-main"><span class="avatar" style="background:${roleColor(u.rol)}">${initials(u.nombre)}</span><span><b>${esc(u.nombre)}${u.id === S.user.id ? " (tú)" : ""}</b><small>${esc(usuarioDe(u))}${u.debeCambiar ? ` · <span style="color:var(--sun);font-weight:700">clave temporal</span>` : ""}</small></span></div></td><td data-l="Rol">${esc(u.rol)}${roleOf(u.rol) ? "" : ` <span class="chip bad">Rol eliminado</span>`}</td><td data-l="Estado">${u.activo ? `<span class="chip ok">Activo</span>` : `<span class="chip bad">Inactivo</span>`}</td><td class="n" data-l="Facturas">${store.all("ventas").filter(v => v.usuario === u.nombre).length}</td></tr>`).join("")}</tbody></table></div>${pg.html(U.length)}`;
     } else {
       const roles = store.all("roles");
       out.innerHTML = `<div class="pgrid" style="grid-template-columns:repeat(auto-fill,minmax(260px,1fr));margin-bottom:20px">${roles.map(r => { const n = store.all("usuarios").filter(u => u.rol === r.nombre).length; const np = r.sistema ? ALL_PERMS.length : r.permisos.length;
@@ -2836,29 +2922,68 @@ function roleForm(r) {
     if (await confirmBox(`Se eliminará el rol ${esc(r.nombre)}.`, { ok: "Eliminar rol", danger: true })) { store.del("roles", r.id); audit("Eliminó", "Roles", r.nombre); m.close(); route(); toast("Rol eliminado"); }
   });
 }
+function credencialesModal(perfil, clave) {
+  const usuario = usuarioDe(perfil), txt = `Acceso al sistema de ${store.config.empresa}\nUsuario: ${usuario}\nContraseña temporal: ${clave}\nAl entrar por primera vez, el sistema te pedirá elegir tu propio usuario y contraseña.`;
+  const m = modal({ title: "Datos de acceso", size: "narrow", body: `<div class="note ok" style="margin-bottom:14px">${ic("i-check")}<span>Entrégale estos datos a <b>${esc(perfil.nombre)}</b>. ${perfil.debeCambiar ? "Al entrar por primera vez tendrá que elegir su propio usuario y contraseña." : ""}</span></div>
+    <dl class="dl" style="font-size:1rem"><dt>Usuario</dt><dd style="font-family:ui-monospace,Consolas,monospace">${esc(usuario)}</dd><dt>Contraseña</dt><dd style="font-family:ui-monospace,Consolas,monospace">${esc(clave)}</dd><dt>Rol</dt><dd>${esc(perfil.rol)}</dd></dl>
+    <p class="tiny muted" style="margin:14px 0 0">Esta contraseña no se vuelve a mostrar. Si se pierde, usa “Restablecer contraseña”.</p>`,
+    foot: `<a class="btn" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(txt)}">${ic("i-wa")}WhatsApp</a><button class="btn" data-copy>Copiar</button><button class="btn pri" data-close>Listo</button>` });
+  m.$("[data-copy]").onclick = async () => { try { await navigator.clipboard.writeText(txt); toast("Copiado"); } catch { toast("No se pudo copiar; selecciona el texto a mano.", "err"); } };
+}
 function userForm(u) {
-  const nuevo = !u; u = u ? { ...u } : { nombre: "", email: "", rol: store.all("roles").find(r => !r.sistema)?.nombre || "Propietario", activo: true };
-  const lockOwner = !isOwner() && u.rol === "Propietario";
-  if (lockOwner) return toast("Solo un propietario puede modificar a otro propietario.", "err");
-  const m = modal({ title: nuevo ? "Nuevo usuario" : u.nombre, body: `<form class="grid" data-f><div class="grid g2"><label class="field"><span>Nombre completo</span><input class="input" name="nombre" value="${esc(u.nombre)}"></label><label class="field"><span>Correo</span><input class="input" type="email" name="email" value="${esc(u.email)}" autocomplete="off"></label></div>
+  const nuevo = !u; u = u ? { ...u } : { nombre: "", usuario: "", rol: store.all("roles").find(r => !r.sistema)?.nombre || "Propietario", activo: true };
+  if (!isOwner() && u.rol === "Propietario") return toast("Solo un propietario puede modificar a otro propietario.", "err");
+  const temp = genClave();
+  const m = modal({ title: nuevo ? "Nuevo usuario" : u.nombre, body: `<form class="grid" data-f><div class="grid g2"><label class="field"><span>Nombre completo</span><input class="input" name="nombre" value="${esc(u.nombre)}"></label>
+    <label class="field"><span>Usuario para entrar</span><input class="input" name="usuario" value="${esc(usuarioDe(u))}" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="ej. facturacion" ${nuevo ? "" : "readonly title='Cada persona cambia su usuario desde «Mi cuenta»'"}></label></div>
+    ${nuevo ? `<div class="grid g2" style="align-items:end"><label class="field"><span>Contraseña temporal</span><input class="input" name="clave" value="${temp}" autocomplete="off" style="font-family:ui-monospace,Consolas,monospace"></label><button type="button" class="btn" data-gen style="height:42px">Generar otra</button></div>
+    <label class="switch"><input type="checkbox" name="debeCambiar" checked> Pedir que elija su propio usuario y contraseña al entrar por primera vez</label>` : u.debeCambiar ? `<div class="note">${ic("i-alert")}<span>Todavía no ha entrado para cambiar su usuario y contraseña temporales.</span></div>` : ""}
     <div class="field"><span>Rol</span><div class="grid" style="gap:8px">${store.all("roles").map(r => { const dis = r.sistema && !isOwner(); return `<label style="display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid var(--line);border-radius:12px;cursor:${dis ? "not-allowed" : "pointer"};opacity:${dis ? .5 : 1}"><input type="radio" name="rol" value="${esc(r.nombre)}" ${u.rol === r.nombre ? "checked" : ""} ${dis ? "disabled" : ""} style="margin-top:4px"><span><b>${esc(r.nombre)}</b><br><small class="muted">${esc(r.desc || "")}</small></span></label>`; }).join("")}</div></div>
-    ${!cloud.on ? `<label class="field"><span>${nuevo ? "Contraseña" : "Nueva contraseña (deja vacío para no cambiarla)"}</span><input class="input" type="password" name="pass" autocomplete="new-password"></label>` : ""}
-    <label class="switch"><input type="checkbox" name="activo" ${u.activo ? "checked" : ""}> Puede entrar al sistema</label></form>`,
-    foot: `${!nuevo && u.id !== S.user.id && can("eliminar") ? `<button class="btn danger" data-del style="margin-right:auto">${ic("i-trash")}Eliminar</button>` : ""}<button class="btn" data-close>Cancelar</button><button class="btn pri" data-save>${nuevo ? "Crear usuario" : "Guardar cambios"}</button>` });
+    ${nuevo ? "" : `<label class="switch"><input type="checkbox" name="activo" ${u.activo ? "checked" : ""}> Puede entrar al sistema</label>`}</form>`,
+    foot: `${!nuevo && u.id !== S.user.id && can("eliminar") ? `<button class="btn danger" data-del style="margin-right:auto">${ic("i-trash")}Eliminar</button>` : ""}${!nuevo && u.id !== S.user.id ? `<button class="btn" data-reset>${ic("i-shield")}Restablecer contraseña</button>` : ""}<button class="btn" data-close>Cancelar</button><button class="btn pri" data-save>${nuevo ? "Crear usuario" : "Guardar cambios"}</button>` });
   const F = m.$("[data-f]");
-  const ownersLeft = (excl) => store.all("usuarios").filter(x => x.id !== excl && x.rol === "Propietario" && x.activo).length;
+  const ownersLeft = excl => store.all("usuarios").filter(x => x.id !== excl && x.rol === "Propietario" && x.activo).length;
+  const setLocal = perfil => { const a = store.data.usuarios; const i = a.findIndex(x => x.id === perfil.id); i >= 0 ? a[i] = perfil : a.push(perfil); store.save(); };
+  m.$("[data-gen]")?.addEventListener("click", () => F.clave.value = genClave());
   m.$("[data-save]").onclick = async () => {
-    if (!requireFields(F, ["nombre", "email"])) return; const d = formData(F); d.email = d.email.toLowerCase();
+    const btn = m.$("[data-save]"); if (btn.disabled) return;
+    if (!requireFields(F, ["nombre", "usuario"])) return; const d = formData(F); d.usuario = d.usuario.toLowerCase();
     if (!d.rol) return toast("Elige un rol.", "err");
-    if (store.all("usuarios").some(x => x.email.toLowerCase() === d.email && x.id !== u.id)) return toast("Ya existe un usuario con ese correo.", "err");
-    if (!cloud.on && nuevo && !d.pass) return toast("Asigna una contraseña.", "err");
+    if (nuevo) {
+      if (!usuarioValido(d.usuario)) return toast("Usuario no válido: usa letras, números, punto o guion (mínimo 3), o un correo.", "err");
+      if (!claveValida(d.clave)) return toast("La contraseña temporal debe tener al menos 8 caracteres, con letras y números.", "err");
+      if (store.all("usuarios").some(x => x.email.toLowerCase() === aEmail(d.usuario))) return toast("Ya existe un usuario con ese nombre de usuario.", "err");
+      btn.disabled = true;
+      try {
+        let perfil;
+        if (cloud.on) { perfil = (await fnUsuarios({ accion: "crear", nombre: d.nombre, usuario: d.usuario, rol: d.rol, clave: d.clave, debeCambiar: d.debeCambiar })).perfil; setLocal(perfil); }
+        else { perfil = { nombre: d.nombre, usuario: d.usuario, email: aEmail(d.usuario), rol: d.rol, activo: true, debeCambiar: d.debeCambiar, passHash: await sha(d.clave) }; store.put("usuarios", perfil); audit("Creó", "Usuarios", `${perfil.nombre} (${perfil.usuario}) · rol ${perfil.rol}`); }
+        m.close(); route(); credencialesModal(perfil, d.clave);
+      } catch (x) { toast(x.message, "err"); btn.disabled = false; }
+      return;
+    }
     if (u.rol === "Propietario" && (d.rol !== "Propietario" || !d.activo) && !ownersLeft(u.id)) return toast("Debe quedar al menos un propietario activo.", "err");
-    const o = { ...u, nombre: d.nombre, email: d.email, rol: d.rol, activo: d.activo }; if (d.pass) o.passHash = await sha(d.pass);
-    store.put("usuarios", o); audit(nuevo ? "Creó" : "Modificó", "Usuarios", `${o.nombre} (${o.email}) · rol ${o.rol}${o.activo ? "" : " · inactivo"}`); m.close(); if (o.id === S.user.id) { S.user = o; render(); } else route(); toast(nuevo ? "Usuario creado" : "Usuario actualizado");
+    const o = { ...u, nombre: d.nombre, rol: d.rol, activo: d.activo };
+    store.put("usuarios", o); audit("Modificó", "Usuarios", `${o.nombre} (${usuarioDe(o)}) · rol ${o.rol}${o.activo ? "" : " · inactivo"}`); m.close(); if (o.id === S.user.id) { S.user = o; render(); } else route(); toast("Usuario actualizado");
   };
+  m.$("[data-reset]")?.addEventListener("click", async () => {
+    const clave = genClave();
+    if (!await confirmBox(`Se le asignará a ${esc(u.nombre)} la contraseña temporal <b style="font-family:ui-monospace,Consolas,monospace">${clave}</b> y deberá elegir una nueva al entrar.`, { ok: "Restablecer", title: "Restablecer contraseña" })) return;
+    try {
+      let perfil;
+      if (cloud.on) { perfil = (await fnUsuarios({ accion: "restablecer", id: u.id, clave })).perfil; setLocal(perfil); }
+      else { perfil = { ...store.get("usuarios", u.id), passHash: await sha(clave), debeCambiar: true }; store.put("usuarios", perfil); audit("Restableció", "Usuarios", `contraseña de ${perfil.nombre}`); }
+      m.close(); route(); credencialesModal(perfil, clave);
+    } catch (x) { toast(x.message, "err"); }
+  });
   m.$("[data-del]")?.addEventListener("click", async () => {
     if (u.rol === "Propietario" && !ownersLeft(u.id)) return toast("Debe quedar al menos un propietario activo.", "err");
-    if (await confirmBox(`${esc(u.nombre)} ya no podrá entrar. Sus documentos se conservan.`, { ok: "Eliminar usuario", danger: true })) { store.del("usuarios", u.id); audit("Eliminó", "Usuarios", u.email); m.close(); route(); toast("Usuario eliminado"); }
+    if (!await confirmBox(`${esc(u.nombre)} ya no podrá entrar. Sus documentos se conservan.`, { ok: "Eliminar usuario", danger: true })) return;
+    try {
+      if (cloud.on) { await fnUsuarios({ accion: "eliminar", id: u.id }); store.data.usuarios = store.all("usuarios").filter(x => x.id !== u.id); store.save(); }
+      else { store.del("usuarios", u.id); audit("Eliminó", "Usuarios", usuarioDe(u)); }
+      m.close(); route(); toast("Usuario eliminado");
+    } catch (x) { toast(x.message, "err"); }
   });
 }
 
@@ -2897,7 +3022,7 @@ VIEWS.config = el => {
     <form class="grid" data-sb><label class="field"><span>URL del proyecto</span><input class="input" name="url" value="${esc(sb.url || "")}" placeholder="https://xxxx.supabase.co"></label><label class="field"><span>Clave pública (anon key)</span><input class="input" name="key" value="${esc(sb.key || "")}" placeholder="eyJhbGciOi…"></label>
     <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn pri" data-conn>${ic("i-cloud")}Conectar y recargar</button>${lsGet("sb") ? `<button type="button" class="btn danger" data-disc>Desconectar</button>` : ""}</div></form>
     <div class="note" style="margin-top:16px">${ic("i-alert")}<span>Antes de conectar, ejecuta el archivo <b>schema.sql</b> en Supabase (SQL Editor) y crea tu usuario en Authentication. El primer usuario que entre queda como propietario.</span></div></section>
-    ${cloud.on ? `<section class="panel" style="margin-top:16px"><header><h2>Cargar datos</h2></header><p class="muted" style="margin-top:0">Si empiezas con la base vacía, puedes cargar los datos de ejemplo para probar, o importar un respaldo desde la pestaña Respaldo.</p><button class="btn" data-seedcloud>Cargar datos de ejemplo en la nube</button></section>` : ""}` : ""}
+    ${cloud.on && !store.all("productos").length && !store.all("ventas").length ? `<section class="panel" style="margin-top:16px"><header><h2>Cargar datos</h2></header><p class="muted" style="margin-top:0">Si empiezas con la base vacía, puedes cargar los datos de ejemplo para probar, o importar un respaldo desde la pestaña Respaldo.</p><button class="btn" data-seedcloud>Cargar datos de ejemplo en la nube</button></section>` : ""}` : ""}
   ${tab === "datos" ? `<section class="panel"><header><h2>Respaldo</h2></header><p class="muted" style="margin-top:0">Descarga una copia de toda la información (productos, clientes, facturas, fotos, etc.) en un archivo JSON. Guárdala en un lugar seguro.</p>
     <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn pri" data-exp>${ic("i-down")}Descargar respaldo</button><label class="btn">${ic("i-up")}Restaurar desde archivo<input type="file" accept=".json,application/json" hidden data-imp></label></div></section>
     ${!cloud.on ? `<section class="panel" style="margin-top:16px"><header><h2>Datos de demostración</h2></header><p class="muted" style="margin-top:0">Borra todo lo de este navegador y vuelve a cargar los datos de ejemplo.</p><button class="btn danger" data-reset>Restablecer demostración</button></section>` : ""}` : ""}

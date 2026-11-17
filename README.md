@@ -13,53 +13,71 @@ Desarrollado por **SP BJ SOFTWARE** · Instagram @bjsoftware · 849-473-3173.
 | `sw.js` | Hace que abra rápido y funcione sin internet (los datos sí necesitan conexión) |
 | `vercel.json` | Encabezados para Vercel |
 | `supabase/schema.sql` | Tabla, permisos por rol, tiempo real y funciones atómicas de stock y NCF |
+| `supabase/functions/usuarios/` | Crea usuarios, restablece contraseñas y gestiona el cambio obligatorio del primer ingreso |
 | `supabase/functions/alerta-stock/` | (Opcional) Envío automático de alertas de stock bajo por correo y WhatsApp |
 
 Sin Supabase configurado, la app arranca en **modo demostración**: carga datos de ejemplo y los guarda solo en ese navegador. Los usuarios de prueba usan la contraseña `demo123`.
 
-## 1. Supabase
+## Puesta en marcha desde cero
 
-1. Crea un proyecto en [supabase.com](https://supabase.com).
-2. Abre **SQL Editor**, pega el contenido de `supabase/schema.sql` y pulsa **Run**.
-3. En **Authentication → Sign In / Providers → Email**, desactiva **Confirm email**. Así los usuarios que crees desde el panel entran de inmediato.
-4. En **Authentication → Users → Add user**, crea el usuario del **propietario** con su correo y contraseña.
-5. En **Project Settings → API**, copia la **Project URL** y la clave **anon public**.
+Sigue los pasos en orden. Al terminar, el sistema arranca vacío (sin datos de ejemplo) y listo para trabajar.
 
-## 2. Conectar la app
+### 1. Crear el proyecto en Supabase
+1. Crea la cuenta en [supabase.com](https://supabase.com), idealmente con el correo de KPL AGRO, y luego un proyecto nuevo (región **East US**, la más cercana a RD).
+2. Ve a **SQL Editor → New query**, pega todo el contenido de `supabase/schema.sql` y pulsa **Run**. Debe terminar sin errores.
 
-Tienes dos formas de hacerlo.
+### 2. Configurar el acceso
+1. En **Authentication → Sign In / Providers → Email**, desactiva **Confirm email**.
+2. En la misma sección, desactiva **Allow new users to sign up**. Así nadie puede registrarse por su cuenta: los usuarios solo se crean desde el sistema.
+3. En **Authentication → Users → Add user → Create new user**, crea tu usuario de proveedor:
+   - Email: `bjsoftware@kpl.local` (en el sistema entrarás solo con `bjsoftware`).
+   - Password: una contraseña segura tuya.
+   - Marca **Auto Confirm User**.
 
-- **Opción A (recomendada).** Abre `index.html` y pega los valores al inicio del script:
-  ```js
-  const SUPABASE_URL = "https://xxxx.supabase.co";
-  const SUPABASE_ANON_KEY = "eyJhbGciOi...";
-  ```
-- **Opción B.** Desde la app: **Configuración → Nube**. Pega la URL y la clave y pulsa **Conectar y recargar**. Esta opción solo aplica en ese dispositivo.
+### 3. Instalar las funciones
+En **Edge Functions → Deploy a new function → Via Editor**:
+1. Nombre **`usuarios`**: pega el contenido de `supabase/functions/usuarios/index.ts` y pulsa **Deploy**. Es la que crea los usuarios y cambia contraseñas. Es obligatoria.
+2. (Opcional) Nombre **`alerta-stock`**: solo si se van a enviar alertas automáticas (ver más abajo).
 
-La clave *anon* es pública por diseño. La seguridad la dan las reglas RLS del `schema.sql`.
+Si al crear un usuario aparece un error 401, abre la función `usuarios` → **Details** y desactiva **Verify JWT with legacy secret**. La función comprueba la sesión por sí misma.
 
-## 3. GitHub y Vercel
+### 4. Conectar el sistema
+1. En **Project Settings → API Keys**, copia la **Project URL** y la clave pública: la **anon public** de la pestaña *Legacy API Keys* o, si no aparece, la **Publishable key**.
+2. Abre `index.html` y pégalas al inicio del script:
+   ```js
+   const SUPABASE_URL = "https://xxxx.supabase.co";
+   const SUPABASE_ANON_KEY = "eyJhbGciOi...";
+   ```
+   Esa clave es pública por diseño. La seguridad la dan las reglas del `schema.sql`.
 
-1. Crea un repositorio privado en GitHub (por ejemplo `kpl-agro`) y sube **todos** los archivos de esta carpeta.
-2. En Vercel, entra a **Add New → Project**, importa el repositorio y elige **Framework Preset: Other**. No hace falta comando de compilación. Pulsa **Deploy**.
-3. Cada `git push` vuelve a publicar la app automáticamente.
+### 5. Publicar
+1. Crea un repositorio **privado** en GitHub (por ejemplo `kpl-agro`) y sube el **contenido** de esta carpeta, con `index.html` en la raíz.
+2. En Vercel: **Add New → Project**, importa el repositorio, elige **Framework Preset: Other** y pulsa **Deploy**.
+3. Cada `git push` vuelve a publicar automáticamente.
 
-## 4. Primer uso
+### 6. Primer ingreso (tú, como proveedor)
+1. Entra con el usuario `bjsoftware` y tu contraseña. Como la base está vacía, el sistema te registra como **Propietario** y crea los roles: Propietario, Vendedor, Contabilidad y Almacén.
+2. En **Usuarios y roles**, toca tu nombre y cámbialo a "BJ Software (Soporte)".
+3. El panel muestra la guía **Puesta en marcha**: datos de la empresa, comprobantes NCF, usuarios, productos, clientes y proveedores. Desaparece cuando todo está listo.
+4. En **Configuración**:
+   - **Empresa:** RNC, dirección, teléfono, correo y logo reales.
+   - **Comprobantes:** las secuencias NCF autorizadas por la DGII.
+   - **Funciones:** apaga lo que el cliente no vaya a usar.
 
-1. Entra con el correo del propietario. Al ser el primer usuario, el sistema lo registra como **Propietario**.
-2. Ve a **Configuración → Empresa** para poner el nombre, el RNC, el logo, el ITBIS y la tasa del dólar.
-3. Si quieres probar con datos, usa **Configuración → Nube → Cargar datos de ejemplo**. Si no, empieza a crear productos, clientes y proveedores.
+### 7. Crear los usuarios del cliente
+En **Usuarios y roles → Nuevo usuario**, crea cada acceso con un usuario genérico. El sistema genera una contraseña temporal:
 
-## 5. Agregar empleados
+| Para | Usuario genérico | Rol |
+|---|---|---|
+| Dueño | `propietario` | Propietario |
+| Quien factura | `facturacion` | Vendedor (puedes renombrarlo a "Facturación" en Roles y permisos) |
+| Contable (más adelante) | `contabilidad` | Contabilidad (ajusta sus permisos cuando definas qué verá) |
 
-1. En Supabase: **Authentication → Users → Add user**, con el correo y la contraseña del empleado.
-2. En la app: **Usuarios y roles → Nuevo usuario**, con el **mismo correo** y su rol (Vendedor o Almacén).
+Al crearlo aparece una tarjeta con el usuario y la contraseña temporal, para copiarla o enviarla por WhatsApp. La primera vez que cada persona entra, el sistema la obliga a elegir **su propio usuario y contraseña** antes de dejarla pasar. Después puede cambiarlos cuando quiera en **Mi cuenta**: tocando su nombre, abajo a la izquierda.
 
-Los roles se administran en **Usuarios y roles → Roles y permisos**: puedes crear roles nuevos (por ejemplo "Supervisor") y marcar qué módulos abre y qué acciones hace cada uno. Vienen tres de fábrica: **Propietario** (siempre todo, no se puede quitar), **Vendedor** y **Almacén**. Los permisos también se aplican en la base de datos mediante las reglas RLS del `schema.sql`.
+Si alguien olvida su contraseña, el propietario abre su usuario y usa **Restablecer contraseña**: se genera una nueva temporal y la persona vuelve a elegir la suya al entrar.
 
-Para quitarle el acceso a alguien, desactívalo en **Usuarios y roles**. También puedes borrarlo en Supabase.
-
-## 6. Instalar como app
+### 8. Instalar como app en los equipos
 
 - **Android / Chrome:** menú ⋮ → *Instalar aplicación*.
 - **iPhone (Safari):** Compartir → *Agregar a inicio*.
