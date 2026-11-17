@@ -24,7 +24,8 @@ Sigue los pasos en orden. Al terminar, el sistema arranca vacío (sin datos de e
 
 ### 1. Crear el proyecto en Supabase
 1. Crea la cuenta en [supabase.com](https://supabase.com), idealmente con el correo de KPL AGRO, y luego un proyecto nuevo (región **East US**, la más cercana a RD).
-2. Ve a **SQL Editor → New query**, pega todo el contenido de `supabase/schema.sql` y pulsa **Run**. Debe terminar sin errores.
+2. Ve a **SQL Editor → New query**, pega **todo** el contenido de `supabase/schema.sql` y pulsa **Run**. Si Supabase avisa de "operaciones destructivas", confirma con **Run this query**: el script no borra datos.
+3. Abajo, en **Results**, debe aparecer **INSTALACIÓN COMPLETA** (2 tablas, 18 vistas, 9 funciones). Si dice INCOMPLETA o sale un error, vuelve a ejecutarlo completo.
 
 ### 2. Configurar el acceso
 1. En **Authentication → Sign In / Providers → Email**, desactiva **Confirm email**.
@@ -39,16 +40,16 @@ En **Edge Functions → Deploy a new function → Via Editor**:
 1. Nombre **`usuarios`**: pega el contenido de `supabase/functions/usuarios/index.ts` y pulsa **Deploy**. Es la que crea los usuarios y cambia contraseñas. Es obligatoria.
 2. (Opcional) Nombre **`alerta-stock`**: solo si se van a enviar alertas automáticas (ver más abajo).
 
-Si al crear un usuario aparece un error 401, abre la función `usuarios` → **Details** y desactiva **Verify JWT with legacy secret**. La función comprueba la sesión por sí misma.
+Después de desplegarla, abre la función `usuarios` → **Details** y desactiva **Verify JWT with legacy secret**. Es necesario en los proyectos con claves nuevas (`sb_publishable_` / `sb_secret_`); la función comprueba la sesión por sí misma.
 
 ### 4. Conectar el sistema
-1. En **Project Settings → API Keys**, copia la **Project URL** y la clave pública: la **anon public** de la pestaña *Legacy API Keys* o, si no aparece, la **Publishable key**.
-2. Abre `index.html` y pégalas al inicio del script:
+1. En Supabase, pulsa el botón **Connect** (arriba en el panel del proyecto). Copia el valor de **SUPABASE_URL** y el de **SUPABASE_PUBLISHABLE_KEY**, que empieza con `sb_publishable_`. En proyectos antiguos, usa la clave **anon** (empieza con `eyJ`).
+2. Abre `index.html` y pégalas al inicio del script (busca `SUPABASE_URL`):
    ```js
    const SUPABASE_URL = "https://xxxx.supabase.co";
-   const SUPABASE_ANON_KEY = "eyJhbGciOi...";
+   const SUPABASE_ANON_KEY = "sb_publishable_...";
    ```
-   Esa clave es pública por diseño. La seguridad la dan las reglas del `schema.sql`.
+   **Nunca** pegues la **secret key** (`sb_secret_...`) ni la `service_role`: esas no van en el navegador. La clave publishable es pública por diseño; la seguridad la dan las reglas del `schema.sql`.
 
 ### 5. Publicar
 1. Crea un repositorio **privado** en GitHub (por ejemplo `kpl-agro`) y sube el **contenido** de esta carpeta, con `index.html` en la raíz.

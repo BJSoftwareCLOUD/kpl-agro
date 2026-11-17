@@ -452,3 +452,21 @@ select id, (data->>'fecha')::timestamptz as fecha, data->>'usuario' as usuario, 
   from public.registros where coleccion = 'bitacora';
 
 -- Fin del script
+
+
+-- ---------------------------------------------------------------------
+-- Verificación: el resultado de esta consulta es lo que verás abajo en
+-- el SQL Editor. Debe decir "INSTALACIÓN COMPLETA".
+-- ---------------------------------------------------------------------
+select case when t.tablas = 2 and v.vistas = 18 and f.funciones >= 9
+            then 'INSTALACIÓN COMPLETA'
+            else 'INCOMPLETA: vuelve a ejecutar el script completo' end as resultado,
+       t.tablas, v.vistas, f.funciones
+  from (select count(*) as tablas from information_schema.tables
+         where table_schema = 'public' and table_type = 'BASE TABLE' and table_name in ('registros', 'contadores')) t,
+       (select count(*) as vistas from information_schema.views
+         where table_schema = 'public' and table_name like 'v\_%') v,
+       (select count(*) as funciones from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+         where n.nspname = 'public' and p.proname in ('mi_rol', 'sin_usuarios', 'tiene_permiso', 'puede_escribir', 'guardar',
+                                                      'mover_stock', 'mover_lotes', 'tomar_numero', 'tomar_ncf')) f;
+

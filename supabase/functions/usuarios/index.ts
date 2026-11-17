@@ -9,8 +9,11 @@
 //   • Panel de Supabase → Edge Functions → Deploy a new function → Via Editor,
 //     nombre "usuarios", pega este archivo y pulsa Deploy.
 //   • CLI: supabase functions deploy usuarios
-// No necesita secretos: SUPABASE_URL, SUPABASE_ANON_KEY y SUPABASE_SERVICE_ROLE_KEY
-// los pone Supabase automáticamente. La clave de servicio NUNCA sale de este servidor.
+// No necesita configurar secretos: Supabase inyecta SUPABASE_URL y las claves del proyecto
+// (SUPABASE_PUBLISHABLE_KEY / SUPABASE_SECRET_KEY, o las antiguas ANON / SERVICE_ROLE).
+// La clave secreta NUNCA sale de este servidor.
+// IMPORTANTE: en los proyectos con claves nuevas, desactiva "Verify JWT with legacy secret"
+// en los ajustes de esta función; la función comprueba la sesión por sí misma.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
@@ -26,10 +29,14 @@ Deno.serve(async (req) => {
   try {
     const url = Deno.env.get("SUPABASE_URL")!;
     const auth = req.headers.get("Authorization") ?? "";
-    const comoUsuario = createClient(url, Deno.env.get("SUPABASE_ANON_KEY")!, { global: { headers: { Authorization: auth } } });
+    // Funciona con las claves nuevas (publishable / secret) y con las antiguas (anon / service_role)
+    const clavePublica = Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ?? Deno.env.get("SUPABASE_ANON_KEY");
+    const claveSecreta = Deno.env.get("SUPABASE_SECRET_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    if (!clavePublica || !claveSecreta) return json({ error: "La función no encuentra las claves del proyecto en el entorno de Supabase." }, 500);
+    const comoUsuario = createClient(url, clavePublica, { global: { headers: { Authorization: auth } } });
     const { data: { user } } = await comoUsuario.auth.getUser();
     if (!user?.email) return json({ error: "Tu sesión no es válida. Vuelve a entrar." }, 401);
-    const admin = createClient(url, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
+    const admin = createClient(url, claveSecreta, { auth: { persistSession: false, autoRefreshToken: false } });
 
     const perfilPorEmail = async (email: string) => (await admin.from("registros").select("id, data").eq("coleccion", "usuarios").eq("data->>email", email.toLowerCase()).maybeSingle()).data;
     const perfilPorId = async (id: string) => (await admin.from("registros").select("id, data").eq("coleccion", "usuarios").eq("id", id).maybeSingle()).data;
