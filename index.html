@@ -581,8 +581,9 @@ select.input.pg-size{height:32px;width:auto;padding:0 8px;font-size:.82rem;margi
    modo local (datos en este navegador) con datos de ejemplo.
    También se pueden configurar desde Configuración → Nube.
    ========================================================= */
-const SUPABASE_URL = "https://sptljtbilpqidqiliaoh.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNwdGxqdGJpbHBxaWRxaWxpYW9oIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ5MzAxOTEsImV4cCI6MjExMDUwNjE5MX0.raZt4qDaJh-FO72-yUgzqEZr6SGUK0kZJCjPHLHlZ-E";
+const SUPABASE_URL = "https://sptljtbilpqidqiliaoh.supabase.co";      // Ej.: "https://abcdxyz.supabase.co"
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNwdGxqdGJpbHBxaWRxaWxpYW9oIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ5MzAxOTEsImV4cCI6MjExMDUwNjE5MX0.raZt4qDaJh-FO72-yUgzqEZr6SGUK0kZJCjPHLHlZ-E"; // Clave pública: "sb_publishable_..." (o la "anon" antigua, que empieza con eyJ). NUNCA la secreta.
+
 /* ---------------- Utilidades ---------------- */
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -995,7 +996,14 @@ async function login(email, pass) {
   if (!u.activo) throw new Error("Este usuario está desactivado. Habla con el propietario.");
   S.user = u; lsSet("session", { id: u.id }); audit("Entró", "Sesión", u.email);
 }
+async function revisarBase() {
+  const faltante = ({ error }) => error && (error.code === "PGRST202" || error.code === "42883" || /Could not find the function|does not exist/i.test(error.message || ""));
+  const seguro = pr => Promise.resolve(pr).catch(e => ({ error: { message: String(e?.message || e) } }));
+  const [a, b] = await Promise.all([seguro(cloud.sb.rpc("mi_rol")), seguro(cloud.sb.rpc("tomar_ncf", { seq_id: "__revision__" }))]);
+  if (faltante(a) || faltante(b)) throw new Error("La base de datos de Supabase no está completa: falta ejecutar supabase/schema.sql. Pégalo completo en SQL Editor → Run, revisa con supabase/verificar.sql y vuelve a entrar.");
+}
 async function afterCloudAuth(email) {
+  try { await revisarBase(); } catch (x) { try { await cloud.sb.auth.signOut(); } catch {} throw x; }
   await cloud.pull();
   let u = store.all("usuarios").find(x => x.email.toLowerCase() === email);
   if (!u && store.all("usuarios").length === 0) {
@@ -1391,7 +1399,7 @@ function render() {
 }
 
 /* ---------------- Login ---------------- */
-const APP_VERSION = "2026.11.17-1";
+const APP_VERSION = "2026.11.17-2";
 const VENDOR = { nombre: "SP BJ SOFTWARE", instagram: "@bjsoftware", telefono: "849-473-3173" };
 /* Logo de BJ Software: hexágono con cubo */
 const bjHex = (size = 40) => `<svg viewBox="0 0 64 64" width="${size}" height="${size}" role="img" aria-label="BJ Software"><polygon points="32,5 55.4,18.5 55.4,45.5 32,59 8.6,45.5 8.6,18.5" fill="none" stroke="#F28C1B" stroke-width="5" stroke-linejoin="round"/><polygon points="32,19 43.5,25.5 32,32 20.5,25.5" fill="#FFB65C"/><polygon points="20.5,25.5 32,32 32,45 20.5,38.5" fill="#F59B2E"/><polygon points="43.5,25.5 32,32 32,45 43.5,38.5" fill="#DB720C"/></svg>`;
@@ -1439,7 +1447,7 @@ function bindLogin() {
     e.preventDefault(); const { email, pass } = formData(f); const err = $("#loginErr"); err.textContent = "";
     if (!email || !pass) { err.textContent = "Escribe tu usuario y tu contraseña."; return; }
     const b = f.querySelector(".btn.pri"); b.disabled = true; b.textContent = "Entrando…";
-    try { await login(email, pass); if (!location.hash) location.hash = "dashboard"; render(); toast("Hola, " + S.user.nombre.split(" ")[0]); }
+    try { await login(email, pass); S.skipHash = location.hash !== "#dashboard"; location.hash = "dashboard"; render(); toast("Hola, " + S.user.nombre.split(" ")[0]); }
     catch (x) { err.textContent = x.message; b.disabled = false; b.textContent = "Entrar"; }
   });
   $$("[data-demo]").forEach(b => b.onclick = () => { f.email.value = b.dataset.demo; f.pass.value = "demo123"; f.requestSubmit(); });
@@ -3087,7 +3095,7 @@ async function registerPWA() {
   applyTheme(); store.load();
   matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", () => { if (lsGet("theme", "system") === "system" && S.user) render(); });
   const t0 = Date.now();
-  await cloud.init(); await restoreSession(); render(); registerPWA();
+  await cloud.init(); await restoreSession(); if (S.user && location.hash !== "#dashboard") { S.skipHash = true; location.hash = "dashboard"; } render(); registerPWA();
   try { await Promise.race([document.fonts?.ready, new Promise(r => setTimeout(r, 1500))]); } catch {}
   setTimeout(() => { const sp = $("#splash"); if (sp) { sp.classList.add("out"); setTimeout(() => sp.remove(), 400); } }, Math.max(0, 500 - (Date.now() - t0)));
 })();

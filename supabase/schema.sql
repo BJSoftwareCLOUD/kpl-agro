@@ -296,6 +296,11 @@ grant execute on function public.mover_lotes(jsonb)                   to authent
 grant execute on function public.tomar_numero(text, bigint)           to authenticated;
 grant execute on function public.tomar_ncf(text)                      to authenticated;
 
+-- Permisos de acceso de la API (Supabase normalmente los da solo; se dejan explícitos)
+grant usage on schema public to authenticated;
+grant select, insert, update, delete on public.registros to authenticated;
+grant execute on function public.mi_rol(), public.sin_usuarios(), public.tiene_permiso(text), public.puede_escribir(text, jsonb) to authenticated;
+
 
 -- ---------------------------------------------------------------------
 -- 9) TIEMPO REAL (el propietario ve todo en vivo)
@@ -470,3 +475,8 @@ select case when t.tablas = 2 and v.vistas = 18 and f.funciones >= 9
          where n.nspname = 'public' and p.proname in ('mi_rol', 'sin_usuarios', 'tiene_permiso', 'puede_escribir', 'guardar',
                                                       'mover_stock', 'mover_lotes', 'tomar_numero', 'tomar_ncf')) f;
 
+-- Las vistas de consulta se pueden leer con la sesión del usuario (respetan las mismas reglas)
+grant select on all tables in schema public to authenticated;
+
+-- Que la API de Supabase reconozca de inmediato las funciones y vistas nuevas
+notify pgrst, 'reload schema';
