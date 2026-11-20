@@ -469,24 +469,26 @@ select id, (data->>'fecha')::timestamptz as fecha, data->>'usuario' as usuario, 
 -- Fin del script
 
 
+-- Las vistas de consulta se pueden leer con la sesión del usuario (respetan las mismas reglas)
+grant select on all tables in schema public to authenticated;
+
+-- Que la API de Supabase reconozca de inmediato las funciones y vistas nuevas
+notify pgrst, 'reload schema';
+
 -- ---------------------------------------------------------------------
 -- Verificación: el resultado de esta consulta es lo que verás abajo en
 -- el SQL Editor. Debe decir "INSTALACIÓN COMPLETA".
 -- ---------------------------------------------------------------------
-select case when t.tablas = 2 and v.vistas = 18 and f.funciones >= 9
+select case when t.tablas = 2 and v.vistas >= 19 and f.funciones >= 9 and r.reglas = 4 and rt.tiempo_real
             then 'INSTALACIÓN COMPLETA'
             else 'INCOMPLETA: vuelve a ejecutar el script completo' end as resultado,
-       t.tablas, v.vistas, f.funciones
+       t.tablas, v.vistas, f.funciones, r.reglas, rt.tiempo_real
   from (select count(*) as tablas from information_schema.tables
          where table_schema = 'public' and table_type = 'BASE TABLE' and table_name in ('registros', 'contadores')) t,
        (select count(*) as vistas from information_schema.views
          where table_schema = 'public' and table_name like 'v\_%') v,
        (select count(*) as funciones from pg_proc p join pg_namespace n on n.oid = p.pronamespace
          where n.nspname = 'public' and p.proname in ('mi_rol', 'sin_usuarios', 'tiene_permiso', 'puede_escribir', 'guardar',
-                                                      'mover_stock', 'mover_lotes', 'tomar_numero', 'tomar_ncf')) f;
-
--- Las vistas de consulta se pueden leer con la sesión del usuario (respetan las mismas reglas)
-grant select on all tables in schema public to authenticated;
-
--- Que la API de Supabase reconozca de inmediato las funciones y vistas nuevas
-notify pgrst, 'reload schema';
+                                                      'mover_stock', 'mover_lotes', 'tomar_numero', 'tomar_ncf')) f,
+       (select count(*) as reglas from pg_policies where schemaname = 'public' and tablename = 'registros') r,
+       (select exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'registros') as tiempo_real) rt;

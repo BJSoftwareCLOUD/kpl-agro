@@ -101,6 +101,7 @@ En **Configuración → Funciones**, el cliente activa solo lo que va a usar. Lo
 | Alertas de stock bajo | Aviso con botones para enviarlo por WhatsApp o correo. Con la función `alerta-stock` instalada, el envío es automático. |
 | Arqueo de inventario | Conteo físico de todos los productos a la vez: compara contra el sistema, ajusta las diferencias sin hacer compras y guarda el historial imprimible. También sirve para cargar el inventario inicial. |
 | Servicios | Productos sin inventario (fletes, empaque, fumigación…): se facturan y se compran sin mover existencias. En el 606 se reportan como servicios. |
+| Contabilidad y finanzas | Partida doble automática, estados financieros, CxC, CxP y tablero de decisiones (ver sección propia). |
 | Bitácora | Registro de quién hizo qué y cuándo, con filtros y exportación. |
 
 Además, cada cliente tiene su **estado de cuenta** (botón en la ficha del cliente), que se puede imprimir, descargar en PDF o Excel y enviar por WhatsApp.
@@ -110,6 +111,24 @@ Además, cada cliente tiene su **estado de cuenta** (botón en la ficha del clie
 1. Instala la [CLI de Supabase](https://supabase.com/docs/guides/cli) y ejecuta `supabase functions deploy alerta-stock`.
 2. Configura los secretos del canal que vayas a usar: correo con [Resend](https://resend.com) (`RESEND_API_KEY`, `ALERTA_REMITENTE`) y/o WhatsApp Cloud API de Meta (`WA_TOKEN`, `WA_PHONE_ID`, `WA_TEMPLATE`).
 3. En la app, ve a **Configuración → Alertas** y activa "Enviar automáticamente".
+
+## Contabilidad y finanzas
+
+El sistema lleva la contabilidad por **partida doble automática**: cada factura, cobro, compra, pago a proveedor, gasto, nota de crédito, ajuste de inventario, arqueo y cierre de caja genera su asiento contable, sin que nadie lo digite. Se encuentra en el grupo **Contabilidad** del menú:
+
+| Pantalla | Contenido |
+|---|---|
+| Tablero de decisiones | Ventas, utilidad, efectivo, liquidez, capital de trabajo, ciclo de efectivo (días de cobro, inventario y pago), punto de equilibrio, rentabilidad por producto, concentración de clientes, tendencia de 12 meses y alertas con recomendaciones. Compara con el período anterior. |
+| Estados financieros | Estado de resultados (con % de ventas y comparación), balance general (verifica que activos = pasivos + patrimonio), balanza de comprobación (con libro mayor por cuenta) y flujo de caja por el método directo (operación, inversión y financiamiento). |
+| Cuentas por cobrar / por pagar | Antigüedad de saldos por cliente o proveedor (al día, 1–30, 31–60, 61–90, más de 90 días), días promedio de cobro y de pago, y cobro o pago directo desde el detalle. |
+| Libro diario y cuentas | Todos los asientos con filtro por origen, asientos manuales con plantillas (apertura, aporte de capital, préstamo, activo fijo, depreciación, traspaso) y catálogo de cuentas ampliable. |
+
+Todo se puede imprimir, ver en PDF o descargar en Excel.
+
+**Para empezar en producción:**
+1. Registra el **asiento de apertura** (Libro diario → Asientos manuales → Nuevo asiento → "Apertura") con los saldos reales de caja, bancos, activos fijos, préstamos y capital.
+2. Si el inventario inicial se cargó con un arqueo, abre ese arqueo (Arqueo de inventario → Historial) y marca **"Contabilizar como inventario inicial"**, para que cuente como capital y no como ganancia.
+3. Para la contable, marca en **Usuarios y roles → Roles y permisos → Contabilidad** los permisos "Contabilidad y finanzas" y "Registrar asientos contables".
 
 ## Notas técnicas
 
