@@ -60,7 +60,8 @@ Después de desplegarla, abre la función `usuarios` → **Details** y desactiva
 1. Entra con el usuario `bjsoftware` y tu contraseña. Como la base está vacía, el sistema te registra como **Propietario** y crea los roles: Propietario, Vendedor, Contabilidad y Almacén.
 2. En **Usuarios y roles**, toca tu nombre y cámbialo a "BJ Software (Soporte)".
 3. El panel muestra la guía **Puesta en marcha**: datos de la empresa, comprobantes NCF, usuarios, productos, clientes y proveedores. Desaparece cuando todo está listo.
-4. En **Configuración**:
+4. **Inventario inicial:** crea los productos (la existencia arranca en 0 y no se escribe a mano) y luego haz un **Arqueo de inventario** con lo que hay en el almacén. Desde ahí, la existencia sube con las compras y se corrige con nuevos arqueos.
+5. En **Configuración**:
    - **Empresa:** RNC, dirección, teléfono, correo y logo reales.
    - **Comprobantes:** las secuencias NCF autorizadas por la DGII.
    - **Funciones:** apaga lo que el cliente no vaya a usar.
@@ -98,6 +99,8 @@ En **Configuración → Funciones**, el cliente activa solo lo que va a usar. Lo
 | Conversión de unidades | Se vende y se compra por caja, libra o kilo usando el peso de cada producto. |
 | Cierre de caja | Cuadre diario por efectivo, transferencia, tarjeta y cheque, con faltantes, sobrantes e historial. |
 | Alertas de stock bajo | Aviso con botones para enviarlo por WhatsApp o correo. Con la función `alerta-stock` instalada, el envío es automático. |
+| Arqueo de inventario | Conteo físico de todos los productos a la vez: compara contra el sistema, ajusta las diferencias sin hacer compras y guarda el historial imprimible. También sirve para cargar el inventario inicial. |
+| Servicios | Productos sin inventario (fletes, empaque, fumigación…): se facturan y se compran sin mover existencias. En el 606 se reportan como servicios. |
 | Bitácora | Registro de quién hizo qué y cuándo, con filtros y exportación. |
 
 Además, cada cliente tiene su **estado de cuenta** (botón en la ficha del cliente), que se puede imprimir, descargar en PDF o Excel y enviar por WhatsApp.

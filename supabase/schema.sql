@@ -325,8 +325,18 @@ select id, data->>'sku' as sku, data->>'nombre' as nombre, data->>'categoria' as
        (data->>'costo')::numeric as costo, (data->>'precio')::numeric as precio,
        (data->>'stock')::numeric as existencia, (data->>'minimo')::numeric as minimo,
        nullif(data->>'pesoKg', '')::numeric as peso_neto_kg, nullif(data->>'pesoBrutoKg', '')::numeric as peso_bruto_kg,
-       data->>'hs' as codigo_hs, coalesce((data->>'activo')::boolean, true) as activo, updated_at
+       data->>'hs' as codigo_hs, coalesce((data->>'activo')::boolean, true) as activo, updated_at,
+       coalesce(data->>'tipo', 'Producto') as tipo
   from public.registros where coleccion = 'productos';
+
+-- Arqueos de inventario (una fila por producto contado)
+create or replace view public.v_arqueos with (security_invoker = true) as
+select r.id as arqueo_id, (r.data->>'num')::bigint as arqueo, (r.data->>'fecha')::date as fecha, r.data->>'usuario' as realizo,
+       l->>'sku' as sku, l->>'nombre' as producto, (l->>'sistema')::numeric as en_sistema, (l->>'contado')::numeric as contado,
+       (l->>'diferencia')::numeric as diferencia, round((l->>'diferencia')::numeric * coalesce((l->>'costo')::numeric, 0), 2) as valor_diferencia
+  from public.registros r
+  cross join lateral jsonb_array_elements(coalesce(r.data->'lineas', '[]'::jsonb)) l
+ where r.coleccion = 'arqueos';
 
 create or replace view public.v_clientes with (security_invoker = true) as
 select id, data->>'nombre' as nombre, data->>'tipo' as tipo, data->>'rnc' as rnc, data->>'pais' as pais, data->>'ciudad' as ciudad,
