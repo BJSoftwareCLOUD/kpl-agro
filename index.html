@@ -150,7 +150,25 @@ h3{font-size:1rem;font-weight:700}
 .brand b{font-family:var(--display);font-size:1.08rem;color:#fff;display:block;line-height:1.1}
 .brand small{color:var(--side-muted);font-size:.76rem}
 .nav{flex:1;overflow-y:auto;padding:6px 12px 16px;scrollbar-width:thin;scrollbar-color:var(--side-hi) transparent}
-.nav .grp{color:var(--side-muted);font-size:.78rem;font-weight:600;padding:16px 10px 6px}
+.nav .grp{color:var(--side-muted);font-size:.78rem;font-weight:600;padding:14px 10px 6px;display:flex;align-items:center;justify-content:space-between;width:100%;background:none;border:0;cursor:pointer;text-align:left;border-radius:8px;font-family:inherit}
+.nav .grp:hover{color:var(--side-ink)}
+.nav .grp .chev{width:14px;height:14px;transition:transform .2s;opacity:.7}
+.nav .ngrp.cerrado .grp .chev{transform:rotate(-90deg)}
+.nav .ngrp.cerrado .nitems{display:none}
+.mini-btn{display:none}
+@media (min-width:981px){
+  .mini-btn{display:grid}
+  .app{transition:grid-template-columns .2s}
+  .app.mini{grid-template-columns:72px 1fr}
+  .app.mini .brand{padding:18px 0 12px;justify-content:center}
+  .app.mini .brand>div:last-child,.app.mini .nav a>span:not(.count),.app.mini .nav .grp,.app.mini .side-user .who{display:none}
+  .app.mini .nav{padding:6px 10px 16px}
+  .app.mini .ngrp.cerrado .nitems{display:block}
+  .app.mini .ngrp+.ngrp{border-top:1px solid var(--side-hi);margin-top:6px;padding-top:6px}
+  .app.mini .nav a{justify-content:center;padding:10px 0}
+  .app.mini .nav a .count{position:absolute;top:3px;right:6px;padding:0 5px;font-size:.62rem}
+  .app.mini .side-user{flex-direction:column;padding:12px 0;gap:6px}
+}
 .nav a{display:flex;align-items:center;gap:11px;padding:9px 10px;border-radius:10px;color:var(--side-ink);text-decoration:none;font-weight:500;position:relative}
 .nav a svg{width:19px;height:19px;opacity:.8;flex:none}
 .nav a:hover{background:var(--side-hi)}
@@ -565,6 +583,7 @@ select.input.pg-size{height:32px;width:auto;padding:0 8px;font-size:.82rem;margi
 <symbol id="i-swap" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3l4 4-4 4M21 7H9M7 21l-4-4 4-4M3 17h12"/></symbol>
 <symbol id="i-wa" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21l1.7-5A8.5 8.5 0 1 1 8 19.4z"/><path d="M9 9.5c0 3 2.5 5.5 5.5 5.5l1-1.5-2-1-1 .8c-1-.4-1.9-1.3-2.3-2.3l.8-1-1-2z"/></symbol>
 <symbol id="i-cash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 12h.01M18 12h.01"/></symbol>
+<symbol id="i-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></symbol>
 <symbol id="i-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M4 21h16"/></symbol>
 <symbol id="i-up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21V9M7 14l5-5 5 5M4 3h16"/></symbol>
 <symbol id="i-cloud" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19a4.5 4.5 0 1 0-1.4-8.8A6 6 0 0 0 4.3 13 3.5 3.5 0 0 0 6.5 19z"/></symbol>
@@ -1132,7 +1151,7 @@ async function moverStock(items, { negativo = false } = {}) {
 const NCF_TIPOS = { B01: "Crédito fiscal", B02: "Consumo", B14: "Regímenes especiales", B15: "Gubernamental", B16: "Exportaciones", B04: "Nota de crédito", E31: "e-CF Crédito fiscal", E32: "e-CF Consumo", E44: "e-CF Regímenes especiales", E45: "e-CF Gubernamental", E46: "e-CF Exportaciones", E34: "e-CF Nota de crédito" };
 const toE = t => store.config.ncfModo === "E" ? ({ B01: "E31", B02: "E32", B14: "E44", B15: "E45", B16: "E46", B04: "E34" }[t] || t) : t;
 const fmtNCF = (tipo, n) => tipo + String(n).padStart(tipo.startsWith("E") ? 10 : 8, "0");
-const ncfDefault = (c, tipoVenta) => toE(c?.tipoNCF || (tipoVenta === "Exportación" ? "B16" : c?.rnc && c.tipo !== "Exportación" ? "B01" : "B02"));
+const ncfDefault = (c, tipoVenta) => { if (c?.tipoNCF === "SIN") return ""; if (c?.tipoNCF) return toE(c.tipoNCF); if (tipoVenta === "Exportación") return toE("B16"); if (c?.rnc && c.tipo !== "Exportación") return toE("B01"); return store.config.ncfSinRnc === "SIN" ? "" : toE("B02"); };
 const seqFor = tipo => store.all("ncf").filter(s => s.activo !== false && s.tipo === tipo && s.actual <= s.hasta && (!s.vence || s.vence >= today())).sort((a, b) => a.actual - b.actual)[0];
 const seqRest = s => Math.max(0, s.hasta - s.actual + 1);
 function ncfAlertas() {
@@ -1143,7 +1162,7 @@ function ncfAlertas() {
 }
 async function tomarNCF(tipo) {
   if (!feat("ncf") || !tipo) return { ncf: "", vence: "" };
-  const s = seqFor(tipo); if (!s) throw new Error(`No hay secuencia NCF ${tipo} vigente. Agrégala en Configuración → Comprobantes.`);
+  const s = seqFor(tipo); if (!s) throw new Error(`No hay secuencia NCF ${tipo} vigente. Agrégala en Configuración → Comprobantes, o elige “Sin comprobante fiscal” si a este cliente no se le emite NCF.`);
   if (cloud.on) {
     const { data, error } = await cloud.sb.rpc("tomar_ncf", { seq_id: s.id });
     if (!error) { s.actual = +data + 1; store.save(); return { ncf: fmtNCF(tipo, +data), vence: s.vence || "" }; }
@@ -1370,11 +1389,13 @@ function go(v, ctx) { S.pendingCtx = ctx || null; if (location.hash !== "#" + v)
 
 function brandMark() { const c = store.config; return c.logo ? `<img src="${c.logo}" alt="">` : `<span style="width:100%;height:100%;background:#fff;display:grid;place-items:center">${kplLogo(false).replace("<svg ", '<svg style="width:84%;height:84%" ')}</span>`; }
 function shellHTML() {
-  const navHTML = NAV.map(g => { const items = g.items.filter(([v]) => can(v) && viewOn(v)); if (!items.length) return ""; return (g.g ? `<div class="grp">${g.g}</div>` : "") + items.map(([v, t, i]) => `<a href="#${v}" data-nav="${v}">${ic(i)}<span>${t}</span>${v === "productos" ? `<span class="count" data-low></span>` : v === "ordenes" ? `<span class="count" data-late></span>` : ""}</a>`).join(""); }).join("");
+  const cerrados = lsGet("menu-grupos", {});
+  const navHTML = NAV.map(g => { const items = g.items.filter(([v]) => can(v) && viewOn(v)); if (!items.length) return ""; const cerrado = !!(g.g && cerrados[g.g]);
+    return `<div class="ngrp ${cerrado ? "cerrado" : ""}" data-grp="${esc(g.g)}">${g.g ? `<button type="button" class="grp" data-act="grupo" aria-expanded="${!cerrado}"><span>${g.g}</span>${ic("i-chev").replace("<svg", '<svg class="chev"')}</button>` : ""}<div class="nitems">` + items.map(([v, t, i]) => `<a href="#${v}" data-nav="${v}" title="${esc(t)}">${ic(i)}<span>${t}</span>${v === "productos" ? `<span class="count" data-low></span>` : v === "ordenes" ? `<span class="count" data-late></span>` : ""}</a>`).join("") + `</div></div>`; }).join("");
   const fab = can("venta-nueva") ? ["venta-nueva", "Facturar"] : can("compra-nueva") ? ["compra-nueva", "Comprar"] : can("cotizacion-nueva") ? ["cotizacion-nueva", "Cotizar"] : null;
   const b2 = [["ventas", "Ventas", "i-receipt"], ["compras", "Compras", "i-cart"], ["ordenes", "Órdenes", "i-board"], ["clientes", "Clientes", "i-users"]].find(x => can(x[0])) || ["dashboard", "Panel", "i-home"];
   const b3 = [["productos", "Productos", "i-box"], ["ordenes", "Órdenes", "i-board"], ["reportes", "Reportes", "i-chart"]].find(x => can(x[0]) && x[0] !== b2[0]);
-  return `<div class="app">
+  return `<div class="app ${menuModo() === "iconos" ? "mini" : ""}">
   <aside class="side" aria-label="Menú principal">
     <div class="brand"><div class="mark">${brandMark()}</div><div><b data-empresa>${esc(store.config.empresa)}</b><small>Ventas y exportación</small></div></div>
     <nav class="nav">${navHTML}</nav>
@@ -1383,7 +1404,7 @@ function shellHTML() {
   <div class="scrim" data-act="menu"></div>
   <div class="main">
     <header class="top">
-      <button class="icon-btn menu-btn" data-act="menu" aria-label="Abrir menú">${ic("i-menu")}</button>
+      <button class="icon-btn menu-btn" data-act="menu" aria-label="Abrir menú">${ic("i-menu")}</button><button class="icon-btn mini-btn" data-act="mini" title="Contraer o expandir el menú" aria-label="Contraer o expandir el menú">${ic("i-menu")}</button>
       <div class="crumb" id="crumb"></div>
       <button class="pill-new" data-pill hidden>${ic("i-swap")}Hay cambios nuevos · Actualizar</button>
       ${cloud.on ? `<button class="online" data-act="online" aria-label="Personas conectadas"><span class="online-av" data-online></span><span class="sync cloud"><i></i><span data-online-n>En vivo</span></span></button>` : `<span class="sync" title="Datos guardados en este navegador"><i></i><span>Modo local</span></span>`}
@@ -1400,6 +1421,18 @@ function shellHTML() {
     <button data-act="menu">${ic("i-menu")}Más</button>
   </nav></div>`;
 }
+const menuModo = () => lsGet("menu-modo", "completo");
+function abrirGrupoActivo() {
+  const on = $(".nav a.on"); const g = on?.closest(".ngrp"); if (!g) return;
+  if (menuModo() === "lista") $$(".nav .ngrp[data-grp]").forEach(x => { if (x.dataset.grp) { const abrir = x === g; x.classList.toggle("cerrado", !abrir); x.querySelector(".grp")?.setAttribute("aria-expanded", abrir); } });
+  else if (g.classList.contains("cerrado")) { g.classList.remove("cerrado"); g.querySelector(".grp")?.setAttribute("aria-expanded", true); }
+}
+function toggleGrupo(btn) {
+  const g = btn.closest(".ngrp"), abrir = g.classList.contains("cerrado"), modo = menuModo();
+  if (modo === "lista" && abrir) $$(".nav .ngrp").forEach(x => { if (x !== g && x.dataset.grp) { x.classList.add("cerrado"); x.querySelector(".grp")?.setAttribute("aria-expanded", false); } });
+  g.classList.toggle("cerrado", !abrir); btn.setAttribute("aria-expanded", abrir);
+  if (modo !== "lista") { const c = lsGet("menu-grupos", {}); if (abrir) delete c[g.dataset.grp]; else c[g.dataset.grp] = 1; lsSet("menu-grupos", c); }
+}
 function updateBadges() {
   const low = lowStock().length; const late = store.all("ordenes").filter(o => o.estado !== "Despachada" && o.entrega < today()).length;
   $$("[data-low]").forEach(e => { e.textContent = low || ""; e.style.display = low ? "" : "none"; });
@@ -1413,7 +1446,7 @@ function route() {
   S.view = v; S.ctx = S.pendingCtx; S.pendingCtx = null;
   const parent = { "venta-nueva": "ventas", "compra-nueva": "compras", "cotizacion-nueva": "cotizaciones" }[v] || v;
   $$("[data-nav]").forEach(a => a.classList.toggle("on", a.dataset.nav === parent));
-  $("#crumb").innerHTML = `<b>${esc(TITLES[v])}</b>`;
+  $("#crumb").innerHTML = `<b>${esc(TITLES[v])}</b>`; abrirGrupoActivo();
   $(".app")?.classList.remove("menu");
   const old = $("#view"), el = old.cloneNode(false); old.replaceWith(el); VIEWS[v](el); updateBadges();
   window.scrollTo(0, 0); document.title = TITLES[v] + " · " + store.config.empresa; hidePill(); cloud.track(); drawPresence();
@@ -1426,7 +1459,7 @@ function render() {
 }
 
 /* ---------------- Login ---------------- */
-const APP_VERSION = "2026.11.20-2";
+const APP_VERSION = "2026.11.20-3";
 const VENDOR = { nombre: "SP BJ SOFTWARE", instagram: "@bjsoftware", telefono: "849-473-3173" };
 /* Logo de BJ Software: hexágono con cubo */
 const bjHex = (size = 40) => `<svg viewBox="0 0 64 64" width="${size}" height="${size}" role="img" aria-label="BJ Software"><polygon points="32,5 55.4,18.5 55.4,45.5 32,59 8.6,45.5 8.6,18.5" fill="none" stroke="#F28C1B" stroke-width="5" stroke-linejoin="round"/><polygon points="32,19 43.5,25.5 32,32 20.5,25.5" fill="#FFB65C"/><polygon points="20.5,25.5 32,32 32,45 20.5,38.5" fill="#F59B2E"/><polygon points="43.5,25.5 32,32 32,45 43.5,38.5" fill="#DB720C"/></svg>`;
@@ -1577,6 +1610,8 @@ document.addEventListener("click", e => {
   if (act === "menu") $(".app")?.classList.toggle("menu");
   else if (act === "theme") toggleTheme();
   else if (act === "palette") palette();
+  else if (act === "grupo") toggleGrupo(a);
+  else if (act === "mini") { const actual = menuModo(); if (actual === "iconos") lsSet("menu-modo", lsGet("menu-modo-ant", "completo")); else { lsSet("menu-modo-ant", actual); lsSet("menu-modo", "iconos"); } $(".app")?.classList.toggle("mini", menuModo() === "iconos"); setTimeout(ajustarKpisLuego, 250); }
   else if (act === "cuenta") miCuenta();
   else if (act === "online") presenceModal();
   else if (act === "logout") confirmBox("Se cerrará tu sesión en este dispositivo.", { ok: "Cerrar sesión" }).then(y => y && logout());
@@ -1884,7 +1919,7 @@ function partyView(col) {
 VIEWS.clientes = partyView("clientes"); VIEWS.proveedores = partyView("proveedores");
 function partyForm(col, o, onSaved) {
   const cfg = PARTY[col]; const nuevo = !o; o = o ? { ...o } : (col === "clientes" ? { tipo: "Local", pais: "República Dominicana" } : {});
-  const extra = col === "clientes" ? `${feat("listas") ? `<label class="field"><span>Lista de precios</span><select class="input" name="listaId"><option value="">Precio normal</option>${store.all("listas").map(L => `<option value="${L.id}" ${o.listaId === L.id ? "selected" : ""}>${esc(L.nombre)} (${L.moneda === "USD" ? "US$" : "RD$"})</option>`).join("")}</select></label>` : ""}${feat("ncf") ? `<label class="field"><span>Comprobante por defecto</span><select class="input" name="tipoNCF"><option value="">Automático según el cliente</option>${["B01", "B02", "B14", "B15", "B16"].map(t => `<option value="${t}" ${o.tipoNCF === t ? "selected" : ""}>${t} · ${NCF_TIPOS[t]}</option>`).join("")}</select></label>` : ""}` : `<label class="field"><span>Tipo de bienes o servicios (606)</span><select class="input" name="tipo606">${TIPOS_606.map(([k, l]) => `<option value="${k}" ${(o.tipo606 || "09") === k ? "selected" : ""}>${k} · ${l}</option>`).join("")}</select></label>`;
+  const extra = col === "clientes" ? `${feat("listas") ? `<label class="field"><span>Lista de precios</span><select class="input" name="listaId"><option value="">Precio normal</option>${store.all("listas").map(L => `<option value="${L.id}" ${o.listaId === L.id ? "selected" : ""}>${esc(L.nombre)} (${L.moneda === "USD" ? "US$" : "RD$"})</option>`).join("")}</select></label>` : ""}${feat("ncf") ? `<label class="field"><span>Comprobante por defecto</span><select class="input" name="tipoNCF"><option value="">Automático según el cliente</option><option value="SIN" ${o.tipoNCF === "SIN" ? "selected" : ""}>Sin comprobante (no se le emite NCF)</option>${["B01", "B02", "B14", "B15", "B16"].map(t => `<option value="${t}" ${o.tipoNCF === t ? "selected" : ""}>${t} · ${NCF_TIPOS[t]}</option>`).join("")}</select></label>` : ""}` : `<label class="field"><span>¿Emite comprobante fiscal (NCF)?</span><select class="input" name="sinNCF"><option value="" ${!o.sinNCF ? "selected" : ""}>Sí, entrega NCF</option><option value="1" ${o.sinNCF ? "selected" : ""}>No, es informal (sin NCF)</option></select></label><label class="field"><span>Tipo de bienes o servicios (606)</span><select class="input" name="tipo606">${TIPOS_606.map(([k, l]) => `<option value="${k}" ${(o.tipo606 || "09") === k ? "selected" : ""}>${k} · ${l}</option>`).join("")}</select></label>`;
   const m = modal({ title: nuevo ? "Nuevo " + cfg.one : o.nombre, body: `<form class="grid g2" data-f>${cfg.fields.map(([k, l, span, opts]) => `<label class="field ${span === 2 ? "span2" : ""}"><span>${l}</span>${opts ? `<select class="input" name="${k}">${opts.map(x => `<option ${o[k] === x ? "selected" : ""}>${x}</option>`).join("")}</select>` : `<input class="input" name="${k}" value="${esc(o[k] || "")}" ${k === "email" ? 'type="email"' : k === "telefono" ? 'type="tel"' : ""}>`}</label>`).join("")}${extra}</form>`,
     foot: `${!nuevo && can("eliminar") ? `<button class="btn danger" data-del style="margin-right:auto">${ic("i-trash")}Eliminar</button>` : ""}${!nuevo && col === "clientes" ? `<button class="btn" data-ec>${ic("i-receipt")}Estado de cuenta</button>` : ""}${!nuevo && o.telefono ? `<a class="btn" target="_blank" rel="noopener" href="${waLink(o.telefono)}">${ic("i-wa")}WhatsApp</a>` : ""}<button class="btn" data-close>Cancelar</button><button class="btn pri" data-save>${nuevo ? "Crear " + cfg.one : "Guardar cambios"}</button>` });
   const F = m.$("[data-f]");
@@ -1936,7 +1971,7 @@ function docEditor(kind) {
         ${isSale ? `<div class="field"><span>Tipo de venta</span><div class="seg" data-tipo><button type="button" data-v="Local" class="${d.tipo === "Local" ? "on" : ""}">Local</button><button type="button" data-v="Exportación" class="${d.tipo === "Exportación" ? "on" : ""}">${ic("i-globe").replace("<svg", '<svg style="width:14px;height:14px;vertical-align:-2px"')} Exportación</button></div></div>
         <label class="field"><span>Moneda</span><select class="input" name="moneda"><option value="DOP" ${d.moneda === "DOP" ? "selected" : ""}>Pesos (RD$)</option><option value="USD" ${d.moneda === "USD" ? "selected" : ""}>Dólares (US$)</option></select></label>
         <label class="field" data-tasa><span>Tasa US$ → RD$</span><input class="input" type="number" step="0.01" name="tasa" value="${d.tasa}"></label>` : `<label class="field"><span>Comprobante del proveedor (NCF)</span><input class="input" name="documento" value="${esc(d.documento || "")}" placeholder="B0100000000"></label>`}
-        ${kind === "venta" && feat("ncf") ? `<label class="field"><span>Comprobante fiscal</span><select class="input" name="ncfTipo">${ncfOpts().map(t => `<option value="${t}" ${d.ncfTipo === t ? "selected" : ""}>${t} · ${NCF_TIPOS[t]}</option>`).join("")}</select></label>` : ""}
+        ${kind === "venta" && feat("ncf") ? `<label class="field"><span>Comprobante fiscal</span><select class="input" name="ncfTipo"><option value="" ${!d.ncfTipo ? "selected" : ""}>Sin comprobante fiscal</option>${ncfOpts().map(t => `<option value="${t}" ${d.ncfTipo === t ? "selected" : ""}>${t} · ${NCF_TIPOS[t]}</option>`).join("")}</select></label>` : ""}
         ${kind === "cotizacion" ? `<label class="field"><span>Válida hasta</span><input class="input" type="date" name="valida" value="${d.valida}"></label>` : `<div class="field"><span>Condición de pago</span><div class="seg" data-cond><button type="button" data-v="Contado" class="${d.condicion === "Contado" ? "on" : ""}">Contado</button><button type="button" data-v="Crédito" class="${d.condicion === "Crédito" ? "on" : ""}">Crédito</button></div></div>`}
         ${kind !== "cotizacion" ? `<label class="field" data-metodo><span>Forma de pago</span><select class="input" name="metodo">${PAGOS.map(x => `<option ${d.metodo === x ? "selected" : ""}>${x}</option>`).join("")}</select></label>` : ""}
         ${kind === "venta" ? `<label class="field" data-vence><span>Vence</span><input class="input" type="date" name="vence" value="${d.vence || addDays(d.fecha, cfg.diasCredito)}"></label>` : ""}
@@ -1959,6 +1994,7 @@ function docEditor(kind) {
       if (isSale) $("[data-tasa]", el).style.display = d.moneda === "USD" ? "" : "none";
       if (kind === "venta") $("[data-vence]", el).style.display = d.condicion === "Crédito" ? "" : "none";
       if (kind !== "cotizacion") $("[data-metodo]", el).style.display = d.condicion === "Contado" ? "" : "none";
+      if (kind === "compra") { const di = head.querySelector("[name=documento]"); if (di) { const sin = !!store.get("proveedores", d.proveedorId)?.sinNCF; di.disabled = sin; di.placeholder = sin ? "No aplica: proveedor sin comprobante" : "B0100000000"; if (sin) { di.value = ""; d.documento = ""; } } }
       const embp = $("[data-embp]", el); if (embp) embp.style.display = d.tipo === "Exportación" ? "" : "none";
       const L = isSale ? listaDe(cliente(d.clienteId)) : null; $("[data-lista]", el).textContent = L ? "Lista de precios: " + L.nombre : "";
     };
@@ -2759,7 +2795,7 @@ function dgiiData(tipo, mes) {
   store.all("compras").filter(c => c.estado !== "Anulada" && ym(c.fecha) === mes && c.documento).forEach(c => { const pv = proveedor(c.proveedorId); rows.push({ rnc: soloDig(pv.rnc), tid: tipoId(pv.rnc), tb: pv.tipo606 || "09", ncf: c.documento, mod: "", fecha: ymd(c.fecha), pago: saldoCompra(c) <= .01 ? ymd(pagosCompra(c).map(x => x.fecha).sort().pop() || c.fecha) : "", serv: r2(c.lineas.filter(l => esServicio(producto(l.productoId))).reduce((a, l) => a + l.cant * l.precio, 0)), bienes: r2(c.lineas.filter(l => !esServicio(producto(l.productoId))).reduce((a, l) => a + l.cant * l.precio, 0)), total: r2(c.subtotal), itbis: r2(c.itbis || 0), fp: fp606(c), prov: pv.nombre, doc: "Compra #" + c.num }); });
   store.all("gastos").filter(g => ym(g.fecha) === mes && g.ncf).forEach(g => { const itb = +g.itbis || 0; const base = r2(g.monto - itb); rows.push({ rnc: soloDig(g.rnc), tid: tipoId(g.rnc), tb: g.tipo606 || "02", ncf: g.ncf, mod: "", fecha: ymd(g.fecha), pago: ymd(g.fecha), serv: base, bienes: 0, total: base, itbis: r2(itb), fp: ({ Efectivo: "01", Tarjeta: "03" }[g.metodo] || "02"), prov: g.descripcion || g.categoria, doc: "Gasto" }); });
   const line = r => [r.rnc, r.tid, r.tb, r.ncf, r.mod, r.fecha, r.pago, n2(r.serv), n2(r.bienes), n2(r.total), n2(r.itbis), n2(0), n2(0), n2(0), n2(r.itbis), n2(0), "", n2(0), n2(0), n2(0), n2(0), n2(0), r.fp].join("|");
-  return { rows, sin: store.all("compras").filter(c => c.estado !== "Anulada" && ym(c.fecha) === mes && !c.documento).length, line, header: `606|${soloDig(store.config.rnc)}|${mes.replace("-", "")}|${rows.length}` };
+  return { rows, sin: store.all("compras").filter(c => c.estado !== "Anulada" && ym(c.fecha) === mes && !c.documento && !proveedor(c.proveedorId).sinNCF).length, line, header: `606|${soloDig(store.config.rnc)}|${mes.replace("-", "")}|${rows.length}` };
 }
 
 /* =====================================================================
@@ -3010,7 +3046,7 @@ function mayorModal(cod, desde, hasta) {
 VIEWS.estados = el => {
   const f = S.estF ||= { tab: "resultados", preset: "mes", ...rangoPreset("mes") };
   const TABS = [["resultados", "Estado de resultados"], ["balance", "Balance general"], ["balanza", "Balanza de comprobación"], ["flujo", "Flujo de caja"]];
-  let R;
+  let R; const pgB = pager("balanza", [15, 30, 60]);
   el.innerHTML = `<div class="vhead"><div><h1>Estados financieros</h1><p>Se generan solos a partir de las facturas, cobros, compras, pagos, gastos, inventario y asientos manuales.</p></div>
     <div class="acts"><button class="btn" data-print>${ic("i-print")}<span class="lbl">Imprimir</span></button>${exportBtns()}</div></div>
     <div class="tabs" data-tabs>${TABS.map(([k, l]) => `<button data-t="${k}" class="${f.tab === k ? "on" : ""}">${l}</button>`).join("")}</div>
@@ -3025,12 +3061,12 @@ VIEWS.estados = el => {
     else { const x = repFlujo(f.desde, f.hasta); R = x.R; const meses = Object.keys(x.F.mes).sort(); if (meses.length > 1) { let s = x.F.ini; const saldo = meses.map(mm => s = r2(s + x.F.mes[mm].ent - x.F.mes[mm].sal)); extra = `<section class="panel" style="margin-bottom:16px"><header><h2>Efectivo al cierre de cada mes</h2><div class="legend"><span><i style="background:var(--brand)"></i>Saldo</span><span><i style="background:var(--chili)"></i>Salidas</span></div></header>${lineChart(meses.map(mm => MESES[+mm.slice(5) - 1] + " " + mm.slice(2, 4)), [{ name: "Saldo", color: isDark() ? "#3FB37A" : "#1E6B45", values: saldo }, { name: "Salidas", color: isDark() ? "#FF5A4E" : "#D4271F", values: meses.map(mm => x.F.mes[mm].sal) }], { h: 220 })}</section>`; } }
     const ok = /^Cuadra/.test(R.note || "");
     out.innerHTML = `<div class="kpis">${R.kpis.map((k, i) => `<div class="kpi ${i === R.kpis.length - 1 ? "feature" : ""}"><span class="lbl">${esc(k[0])}</span><span class="val">${esc(k[1])}</span>${k[2] ? `<span class="delta ${i === R.kpis.length - 1 ? "" : "muted"}">${esc(k[2])}</span>` : ""}</div>`).join("")}</div>
-      ${R.note ? `<div class="note ${ok ? "ok" : ""}" style="margin-bottom:14px">${ic(ok ? "i-check" : "i-alert")}<span>${esc(R.note)}</span></div>` : ""}${extra}${reportTableHTML(R, R.rows)}
+      ${R.note ? `<div class="note ${ok ? "ok" : ""}" style="margin-bottom:14px">${ic(ok ? "i-check" : "i-alert")}<span>${esc(R.note)}</span></div>` : ""}${extra}${f.tab === "balanza" ? reportTableHTML(R, pgB.slice(R.rows)) + pgB.html(R.rows.length) : reportTableHTML(R, R.rows)}
       ${f.tab === "balanza" ? `<p class="small muted">Toca un código para ver el libro mayor de esa cuenta.</p>` : ""}`;
     $$("[data-mayor]", out).forEach(a => a.onclick = e => { e.preventDefault(); mayorModal(a.dataset.mayor, f.desde, f.hasta); });
   };
-  bindPeriodo(per, f, draw);
-  $("[data-tabs]", el).onclick = e => { const b = e.target.closest("button"); if (!b) return; f.tab = b.dataset.t; $$("[data-tabs] button", el).forEach(x => x.classList.toggle("on", x === b)); draw(); };
+  bindPeriodo(per, f, () => { pgB.reset(); draw(); }); pgB.bind(out, draw);
+  $("[data-tabs]", el).onclick = e => { const b = e.target.closest("button"); if (!b) return; f.tab = b.dataset.t; pgB.reset(); $$("[data-tabs] button", el).forEach(x => x.classList.toggle("on", x === b)); draw(); };
   $("[data-print]", el).onclick = () => printReport(R); bindExport(el, () => R);
   draw();
 };
@@ -3071,9 +3107,13 @@ function vistaAntiguedad(el, tipo) {
   pg.bind(out, draw); draw();
 }
 function detalleAntiguedad(x, esCxC, done) {
-  const m = modal({ title: x.nombre, size: "wide", body: `<div class="tbl-wrap"><table class="t"><thead><tr><th>${esCxC ? "Factura" : "Compra"}</th><th>Fecha</th><th>Vence</th><th class="r">Atraso</th><th class="r">Saldo RD$</th><th></th></tr></thead><tbody>${x.docs.sort((a, b) => b.atraso - a.atraso).map(d => `<tr><td><b>#${d.num}</b>${d.doc.ncf ? `<br><small class="muted">${esc(d.doc.ncf)}</small>` : ""}</td><td>${fdate(d.fecha)}</td><td>${fdate(d.vence)}</td><td class="n ${d.atraso > 30 ? "down" : ""}">${d.atraso > 0 ? d.atraso + " días" : "Al día"}</td><td class="n"><b>${money(d.saldo)}</b></td><td class="n">${can("pagos") ? `<button class="btn sm" data-pg="${d.doc.id}">Registrar ${esCxC ? "cobro" : "pago"}</button>` : ""}</td></tr>`).join("")}</tbody></table></div>`,
+  const docs = x.docs.slice().sort((a, b) => b.atraso - a.atraso), pg = pager("antig-det", [10, 25]);
+  const m = modal({ title: x.nombre, size: "wide", body: `<p class="small muted" style="margin-top:0">${docs.length} ${esCxC ? "facturas" : "compras"} pendientes · total ${money(x.total)}</p><div data-o></div>`,
     foot: `${esCxC ? `<button class="btn" data-ec>${ic("i-receipt")}Estado de cuenta</button>` : ""}<button class="btn pri" data-close>Cerrar</button>` });
-  $$("[data-pg]", m.el).forEach(b => b.onclick = () => { m.close(); esCxC ? abonoForm(store.get("ventas", b.dataset.pg)) : pagoCompraForm(store.get("compras", b.dataset.pg)); });
+  const o = m.$("[data-o]");
+  const draw = () => { o.innerHTML = `<div class="tbl-wrap"><table class="t"><thead><tr><th>${esCxC ? "Factura" : "Compra"}</th><th>Fecha</th><th>Vence</th><th class="r">Atraso</th><th class="r">Saldo RD$</th><th></th></tr></thead><tbody>${pg.slice(docs).map(d => `<tr><td><b>#${d.num}</b>${d.doc.ncf ? `<br><small class="muted">${esc(d.doc.ncf)}</small>` : ""}</td><td>${fdate(d.fecha)}</td><td>${fdate(d.vence)}</td><td class="n ${d.atraso > 30 ? "down" : ""}">${d.atraso > 0 ? d.atraso + " días" : "Al día"}</td><td class="n"><b>${money(d.saldo)}</b></td><td class="n">${can("pagos") ? `<button class="btn sm" data-doc="${d.doc.id}">Registrar ${esCxC ? "cobro" : "pago"}</button>` : ""}</td></tr>`).join("")}</tbody></table></div>${pg.html(docs.length)}`; };
+  o.addEventListener("click", e => { const b = e.target.closest("[data-doc]"); if (!b) return; m.close(); esCxC ? abonoForm(store.get("ventas", b.dataset.doc)) : pagoCompraForm(store.get("compras", b.dataset.doc)); });
+  pg.bind(o, draw); draw();
   m.$("[data-ec]")?.addEventListener("click", () => { m.close(); estadoCuenta(cliente(x.quien)); });
 }
 VIEWS.cxc = el => vistaAntiguedad(el, "cxc");
@@ -3081,7 +3121,7 @@ VIEWS.cxp = el => vistaAntiguedad(el, "cxp");
 
 /* ---------- Tablero de decisiones ---------- */
 VIEWS.tablero = el => {
-  const f = S.tabF ||= { preset: "mes", ...rangoPreset("mes") }; let R;
+  const f = S.tabF ||= { preset: "mes", ...rangoPreset("mes") }; let R; const pgP = pager("rentabilidad", [10, 25, 50]);
   el.innerHTML = `<div class="vhead"><div><h1>Tablero de decisiones</h1><p>La salud del negocio en una pantalla: rentabilidad, liquidez, cobros, pagos, inventario y alertas con recomendaciones.</p></div>
     <div class="acts"><button class="btn" data-print>${ic("i-print")}<span class="lbl">Imprimir</span></button>${exportBtns()}</div></div>
     <section class="panel" style="padding:14px;margin-bottom:14px"><div class="grid g4 keep2" style="align-items:end" data-per></div></section><div data-out></div>`;
@@ -3134,10 +3174,10 @@ VIEWS.tablero = el => {
       <section class="panel" style="margin-bottom:16px"><header><h2>Alertas y recomendaciones</h2><span class="small muted">${A.length}</span></header><div class="grid" style="gap:8px">${A.map(([n, t]) => `<div class="note ${n === "ok" ? "ok" : ""}" style="${n === "bad" ? "background:var(--chili-soft)" : n === "info" ? "background:var(--sky-soft)" : ""}">${ic(n === "ok" ? "i-check" : "i-alert")}<span>${esc(t)}</span></div>`).join("") || `<p class="muted">Sin alertas para este período.</p>`}</div></section>
       <div class="dash" style="margin-bottom:16px"><section class="panel"><header><h2>Ventas netas y utilidad neta, 12 meses</h2><div class="legend"><span><i style="background:var(--chili)"></i>Ventas</span><span><i style="background:var(--brand)"></i>Utilidad</span></div></header>${lineChart(serie.map(x => MESES[+x.mm.slice(5) - 1]), [{ name: "Ventas netas", color: isDark() ? "#FF5A4E" : "#D4271F", values: serie.map(x => x.v) }, { name: "Utilidad neta", color: isDark() ? "#3FB37A" : "#1E6B45", values: serie.map(x => Math.max(0, x.u)) }], { h: 230 })}</section>
       <section class="panel"><header><h2>Concentración de clientes</h2></header>${clis.length ? `<p class="small muted" style="margin-top:0">${n80} de ${clis.length} clientes generan el 80% de las ventas.</p>` + bars(clis.slice(0, 6).map(x => ({ label: x.c.nombre + " · " + pctTxt(x.v, totCli), value: x.v }))) : `<div class="empty">Sin ventas en el período.</div>`}</section></div>
-      <div class="dash"><section class="panel flush"><header><h2>Rentabilidad por producto</h2></header>${prods.length ? `<div class="tbl-wrap" style="border:0;border-radius:0"><table class="t"><thead><tr><th>Producto</th><th class="r">Ingreso</th><th class="r">Ganancia</th><th class="r">Margen</th></tr></thead><tbody>${prods.slice(0, 10).map(x => `<tr><td><div class="cell-main"><span class="thumb" style="width:32px;height:32px">${photo(x.p)}</span><b>${esc(x.p.nombre)}</b></div></td><td class="n">${money(x.i)}</td><td class="n"><b class="${x.g < 0 ? "down" : ""}">${money(x.g)}</b></td><td class="n ${x.m < 10 ? "down" : x.m > 30 ? "up" : ""}">${x.m.toFixed(1)}%</td></tr>`).join("")}</tbody></table></div>` : `<div class="empty">Sin ventas en el período.</div>`}</section>
+      <div class="dash"><section class="panel flush"><header><h2>Rentabilidad por producto</h2></header>${prods.length ? `<div class="tbl-wrap" style="border:0;border-radius:0"><table class="t"><thead><tr><th>Producto</th><th class="r">Ingreso</th><th class="r">Ganancia</th><th class="r">Margen</th></tr></thead><tbody>${pgP.slice(prods).map(x => `<tr><td><div class="cell-main"><span class="thumb" style="width:32px;height:32px">${photo(x.p)}</span><b>${esc(x.p.nombre)}</b></div></td><td class="n">${money(x.i)}</td><td class="n"><b class="${x.g < 0 ? "down" : ""}">${money(x.g)}</b></td><td class="n ${x.m < 10 ? "down" : x.m > 30 ? "up" : ""}">${x.m.toFixed(1)}%</td></tr>`).join("")}</tbody></table></div><div style="padding:0 14px">${pgP.html(prods.length)}</div>` : `<div class="empty">Sin ventas en el período.</div>`}</section>
       <section class="panel"><header><h2>Indicadores</h2></header><div class="grid" style="gap:10px">${ind.slice(8).map(r => `<div style="display:flex;justify-content:space-between;gap:10px;border-bottom:1px solid var(--line);padding-bottom:8px"><span><b>${r[0]}</b><br><small class="muted">${r[3]}</small></span><b class="num">${r[1]}</b></div>`).join("")}</div></section></div>`;
   };
-  bindPeriodo(per, f, draw);
+  bindPeriodo(per, f, () => { pgP.reset(); draw(); }); pgP.bind(out, draw);
   $("[data-print]", el).onclick = () => printReport(R); bindExport(el, () => R);
   draw();
 };
@@ -3178,7 +3218,7 @@ VIEWS.diario = el => {
     const C = cuentas(), s = saldosA(today());
     R = { tab: "catalogo", file: "catalogo-de-cuentas", heading: "Catálogo de cuentas", title: "Catálogo", sheet: "Catálogo", period: "Saldos al " + fdate(today()), note: "", kpis: [["Cuentas", String(C.length)]], cols: [{ h: "Código" }, { h: "Cuenta" }, { h: "Tipo" }, { h: "Naturaleza" }, { h: "Saldo", r: 1 }],
       rows: C.map(c => [c.codigo, c.nombre, TIPOS_CTA[c.tipo], c.nat === "D" ? "Deudora" : "Acreedora", money(s[c.codigo] || 0)]), xrows: C.map(c => [c.codigo, c.nombre, TIPOS_CTA[c.tipo], c.nat === "D" ? "Deudora" : "Acreedora", s[c.codigo] || 0]), foot: null };
-    out.innerHTML = `<div class="tbl-wrap"><table class="t cards"><thead><tr><th>Código</th><th>Cuenta</th><th>Tipo</th><th>Naturaleza</th><th class="r">Saldo actual</th><th></th></tr></thead><tbody>${C.map(c => `<tr class="click" data-cta="${c.codigo}"><td data-l="Código"><b>${c.codigo}</b></td><td class="full" data-l="Cuenta">${esc(c.nombre)}${c.base ? "" : ` <span class="chip plain info">Agregada</span>`}</td><td data-l="Tipo">${TIPOS_CTA[c.tipo]}</td><td data-l="Naturaleza">${c.nat === "D" ? "Deudora" : "Acreedora"}</td><td class="n" data-l="Saldo">${money(s[c.codigo] || 0)}</td><td class="row-acts-cell">${!c.base && puede ? `<button class="btn sm ghost" data-editcta="${c.id}">${ic("i-edit")}</button>` : ""}</td></tr>`).join("")}</tbody></table></div>
+    out.innerHTML = `<div class="tbl-wrap"><table class="t cards"><thead><tr><th>Código</th><th>Cuenta</th><th>Tipo</th><th>Naturaleza</th><th class="r">Saldo actual</th><th></th></tr></thead><tbody>${pg.slice(C).map(c => `<tr class="click" data-cta="${c.codigo}"><td data-l="Código"><b>${c.codigo}</b></td><td class="full" data-l="Cuenta">${esc(c.nombre)}${c.base ? "" : ` <span class="chip plain info">Agregada</span>`}</td><td data-l="Tipo">${TIPOS_CTA[c.tipo]}</td><td data-l="Naturaleza">${c.nat === "D" ? "Deudora" : "Acreedora"}</td><td class="n" data-l="Saldo">${money(s[c.codigo] || 0)}</td><td class="row-acts-cell">${!c.base && puede ? `<button class="btn sm ghost" data-editcta="${c.id}">${ic("i-edit")}</button>` : ""}</td></tr>`).join("")}</tbody></table></div>${pg.html(C.length)}
       <p class="small muted">Toca una cuenta para ver su libro mayor. Las cuentas base las usa la contabilidad automática y no se pueden cambiar; puedes agregar las que necesites.</p>`;
   };
   const draw = () => {
@@ -3315,7 +3355,7 @@ function buildReport(tab, f) {
   } else if (tab === "dgii") {
     const mes = f.mes ||= ym(f.hasta || today()); const tipo = f.dgii ||= "607"; const D = dgiiData(tipo, mes);
     R.period = mesLargo(mes); R.heading = `Formato ${tipo} · ${tipo === "607" ? "ventas de bienes y servicios" : "compras de bienes y servicios"}`; R.file = `dgii-${tipo}-${mes}`;
-    R.note = `Borrador para revisión del contador. Antes de enviarlo, valídalo con la herramienta de formatos de la DGII.${D.sin ? ` Hay ${D.sin} ${tipo === "607" ? "facturas" : "compras"} del mes sin NCF que no se incluyen.` : ""}`;
+    R.note = `Borrador para revisión del contador. Antes de enviarlo, valídalo con la herramienta de formatos de la DGII.${D.sin ? ` Hay ${D.sin} ${tipo === "607" ? "facturas del mes emitidas sin comprobante fiscal; no se reportan en el 607." : "compras del mes sin NCF del proveedor; revisa si falta registrarlo."}` : ""}`;
     R.extra = `<section class="panel" style="margin-bottom:16px;padding:14px"><div class="toolbar" style="margin:0"><div class="seg" data-dgii><button data-v="607" class="${tipo === "607" ? "on" : ""}">607 · Ventas</button><button data-v="606" class="${tipo === "606" ? "on" : ""}">606 · Compras</button></div><input class="input" type="month" data-mes value="${mes}" style="width:auto" aria-label="Mes"><button class="btn pri" data-txt>${ic("i-down")}Descargar TXT</button></div></section>`;
     if (tipo === "607") {
       R.kpis = [["Comprobantes", String(D.rows.length)], ["Monto facturado", money(D.rows.reduce((a, r) => a + (r.mod ? -r.monto : r.monto), 0))], ["ITBIS facturado", money(D.rows.reduce((a, r) => a + (r.mod ? -r.itbis : r.itbis), 0))], ["Ventas a crédito", money(D.rows.reduce((a, r) => a + r.cr, 0))]];
@@ -3637,6 +3677,7 @@ VIEWS.config = el => {
     <div class="grid" style="gap:12px">${FUNCIONES.map(([k, t, d]) => `<label class="switch" style="align-items:flex-start;padding:12px;border:1px solid var(--line);border-radius:12px"><input type="checkbox" data-fn="${k}" ${feat(k) ? "checked" : ""} style="margin-top:2px"><span><b>${t}</b><br><small class="muted">${d}</small></span></label>`).join("")}</div></section>` : ""}
   ${tab === "ncf" ? `<section class="panel"><header><h2>Comprobantes fiscales</h2><button class="btn pri sm" data-newseq>${ic("i-plus")}Agregar secuencia</button></header>
     <div class="field" style="margin-bottom:14px"><span>Tipo de comprobante que emite la empresa</span><div class="seg" data-modo><button data-v="B" class="${c.ncfModo !== "E" ? "on" : ""}">NCF tradicional (B01, B02…)</button><button data-v="E" class="${c.ncfModo === "E" ? "on" : ""}">Electrónico e-CF (E31, E32…)</button></div></div>
+    <label class="field" style="margin-bottom:14px;max-width:520px"><span>A los clientes sin RNC se les emite</span><select class="input" data-sinrnc><option value="B02" ${c.ncfSinRnc !== "SIN" ? "selected" : ""}>Comprobante de consumo (B02 / E32)</option><option value="SIN" ${c.ncfSinRnc === "SIN" ? "selected" : ""}>Sin comprobante fiscal</option></select><small class="tiny muted">Cada cliente puede tener su propio comprobante por defecto en su ficha, y en cada factura se puede cambiar o elegir “Sin comprobante fiscal”.</small></label>
     ${c.ncfModo === "E" ? `<div class="note" style="margin-bottom:14px">${ic("i-alert")}<span>En modo e-CF el sistema numera y guarda los comprobantes electrónicos, pero el envío y la firma ante la DGII se hacen con un proveedor de facturación electrónica autorizado. Esta numeración queda lista para integrarse con él.</span></div>` : ""}
     ${ncfAlertas().length ? `<div class="note" style="margin-bottom:14px">${ic("i-alert")}<span>${ncfAlertas().map(esc).join("<br>")}</span></div>` : ""}
     <div class="tbl-wrap"><table class="t cards"><thead><tr><th>Tipo</th><th>Rango autorizado</th><th class="r">Próximo</th><th class="r">Quedan</th><th>Vence</th><th>Estado</th></tr></thead><tbody>${store.all("ncf").slice().sort((a, b) => a.tipo.localeCompare(b.tipo)).map(q => { const r = seqRest(q); const venc = q.vence && q.vence < today(); return `<tr class="click" data-seq="${q.id}"><td class="full"><b>${q.tipo}</b> · ${esc(NCF_TIPOS[q.tipo] || "")}</td><td data-l="Rango">${fmtNCF(q.tipo, q.desde)} – ${fmtNCF(q.tipo, q.hasta)}</td><td class="n" data-l="Próximo">${r ? fmtNCF(q.tipo, q.actual) : "—"}</td><td class="n" data-l="Quedan">${r}</td><td data-l="Vence">${q.vence ? fdate(q.vence) : "—"}</td><td data-l="Estado">${q.activo === false ? `<span class="chip">Inactiva</span>` : venc ? `<span class="chip bad">Vencida</span>` : !r ? `<span class="chip bad">Agotada</span>` : `<span class="chip ok">Vigente</span>`}</td></tr>`; }).join("") || `<tr><td colspan="6" class="empty">Agrega las secuencias que te autorizó la DGII.</td></tr>`}</tbody></table></div></section>` : ""}
@@ -3645,7 +3686,8 @@ VIEWS.config = el => {
     <label class="field"><span>Correos que reciben las alertas</span><input class="input" name="correo" value="${esc(c.alertas?.correo || "")}" placeholder="dueno@empresa.com, almacen@empresa.com"></label>
     <label class="switch" style="align-items:flex-start"><input type="checkbox" name="auto" ${c.alertas?.auto ? "checked" : ""} style="margin-top:2px"><span><b>Enviar automáticamente</b><br><small class="muted">Requiere la nube y la función <code>alerta-stock</code> instalada en Supabase (incluida en el paquete). Sin ella, el sistema muestra el aviso con botones para enviarlo por WhatsApp o correo con un toque.</small></span></label>
     <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn pri" data-sal>Guardar</button><button type="button" class="btn" data-test>Probar con el stock bajo actual</button></div></form></section>` : ""}
-  ${tab === "apariencia" ? `<section class="panel"><header><h2>Tema</h2></header><div class="seg" data-theme-seg>${[["light", "Claro", "i-sun"], ["dark", "Oscuro", "i-moon"], ["system", "Igual que el dispositivo", "i-gear"]].map(([k, l]) => `<button data-v="${k}" class="${lsGet("theme", "system") === k ? "on" : ""}">${l}</button>`).join("")}</div>
+  ${tab === "apariencia" ? `<section class="panel" style="margin-bottom:16px"><header><h2>Menú lateral</h2></header><div class="grid" style="gap:10px" data-menu-modo>${[["completo", "Completo", "Todos los grupos abiertos. Cada grupo se puede contraer tocando su título."], ["lista", "Lista por grupos", "Solo queda abierto el grupo en el que estás; al abrir otro, se cierra el anterior. Ideal ahora que el menú creció."], ["iconos", "Solo íconos", "El menú se reduce a una franja de íconos y deja más espacio para el contenido. También se activa con el botón ☰ de la barra superior."]].map(([k, t, d]) => `<label class="switch" style="align-items:flex-start;padding:12px;border:1px solid var(--line);border-radius:12px"><input type="radio" name="mm" value="${k}" ${menuModo() === k ? "checked" : ""} style="margin-top:3px"><span><b>${t}</b><br><small class="muted">${d}</small></span></label>`).join("")}</div><p class="small muted" style="margin:10px 0 0">La preferencia se guarda en este dispositivo.</p></section>
+    <section class="panel"><header><h2>Tema</h2></header><div class="seg" data-theme-seg>${[["light", "Claro", "i-sun"], ["dark", "Oscuro", "i-moon"], ["system", "Igual que el dispositivo", "i-gear"]].map(([k, l]) => `<button data-v="${k}" class="${lsGet("theme", "system") === k ? "on" : ""}">${l}</button>`).join("")}</div>
     <p class="small muted" style="margin:14px 0 0">También puedes cambiarlo con el botón de luna o sol de la barra superior. La preferencia se guarda en este dispositivo.</p></section>
     <section class="panel" style="margin-top:16px"><header><h2>Instalar como aplicación</h2></header><p class="muted" style="margin:0">Cuando el sistema está publicado en Vercel puedes instalarlo: en Android o Chrome usa “Instalar aplicación” o “Agregar a la pantalla de inicio”; en iPhone, Compartir → “Agregar a inicio”. Se abre a pantalla completa, como una app.</p></section>` : ""}
   ${tab === "nube" ? `<section class="panel"><header><h2>Supabase</h2>${cloud.on ? `<span class="chip ok">Conectado</span>` : `<span class="chip warn">Modo local</span>`}</header>
@@ -3668,9 +3710,11 @@ VIEWS.config = el => {
   $$("[data-fn]", el).forEach(cb => cb.onchange = () => { const fn = { ...(store.config.funciones || {}) }; fn[cb.dataset.fn] = cb.checked; store.setConfig({ funciones: fn }); audit(cb.checked ? "Activó" : "Desactivó", "Configuración", FUNCIONES.find(x => x[0] === cb.dataset.fn)[1]); render(); });
   $("[data-modo]", el)?.addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; store.setConfig({ ncfModo: b.dataset.v }); audit("Modificó", "Comprobantes", "Modo " + (b.dataset.v === "E" ? "e-CF" : "NCF tradicional")); route(); });
   $("[data-newseq]", el)?.addEventListener("click", () => seqForm());
+  $("[data-sinrnc]", el)?.addEventListener("change", e => { store.setConfig({ ncfSinRnc: e.target.value }); audit("Modificó", "Comprobantes", "Clientes sin RNC: " + (e.target.value === "SIN" ? "sin comprobante" : "consumo")); toast("Guardado"); });
   $$("[data-seq]", el).forEach(tr => tr.onclick = () => seqForm(store.get("ncf", tr.dataset.seq)));
   $("[data-sal]", el)?.addEventListener("click", e => { e.preventDefault(); const d = formData($("[data-al]", el)); store.setConfig({ alertas: d }); audit("Modificó", "Configuración", "Alertas de stock"); toast("Alertas guardadas"); });
   $("[data-test]", el)?.addEventListener("click", () => { const L = lowStock(); if (!L.length) return toast("No hay productos con stock bajo ahora mismo."); const d = formData($("[data-al]", el)); store.setConfig({ alertas: d }); alertaStock(L); });
+  $("[data-menu-modo]", el)?.addEventListener("change", e => { if (e.target.name !== "mm") return; lsSet("menu-modo", e.target.value); if (e.target.value === "lista") lsSet("menu-grupos", {}); render(); });
   $("[data-theme-seg]", el)?.addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; lsSet("theme", b.dataset.v); applyTheme(); render(); });
   $("[data-conn]", el)?.addEventListener("click", e => { e.preventDefault(); const d = formData($("[data-sb]", el)); if (!/^https:\/\/.+/.test(d.url) || d.key.length < 20) return toast("Revisa la URL (https://…supabase.co) y la clave anon.", "err"); lsSet("sb", d); lsSet("session", null); location.reload(); });
   $("[data-disc]", el)?.addEventListener("click", async () => { if (await confirmBox("Se dejará de usar la nube en este dispositivo y volverás al modo local.", { ok: "Desconectar" })) { try { await cloud.sb?.auth.signOut(); } catch {} lsSet("sb", null); location.reload(); } });
