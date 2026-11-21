@@ -1459,7 +1459,7 @@ function render() {
 }
 
 /* ---------------- Login ---------------- */
-const APP_VERSION = "2026.11.20-3";
+const APP_VERSION = "2026.11.21-1";
 const VENDOR = { nombre: "SP BJ SOFTWARE", instagram: "@bjsoftware", telefono: "849-473-3173" };
 /* Logo de BJ Software: hexágono con cubo */
 const bjHex = (size = 40) => `<svg viewBox="0 0 64 64" width="${size}" height="${size}" role="img" aria-label="BJ Software"><polygon points="32,5 55.4,18.5 55.4,45.5 32,59 8.6,45.5 8.6,18.5" fill="none" stroke="#F28C1B" stroke-width="5" stroke-linejoin="round"/><polygon points="32,19 43.5,25.5 32,32 20.5,25.5" fill="#FFB65C"/><polygon points="20.5,25.5 32,32 32,45 20.5,38.5" fill="#F59B2E"/><polygon points="43.5,25.5 32,32 32,45 43.5,38.5" fill="#DB720C"/></svg>`;
@@ -1605,6 +1605,7 @@ function palette() {
 
 /* ---------------- Eventos globales ---------------- */
 document.addEventListener("click", e => {
+  const ln = e.target.closest('a[href^="#"]'); if (ln && S.user && ln.getAttribute("href") === location.hash) { e.preventDefault(); S.pendingCtx = null; route(); return; }
   const a = e.target.closest("[data-act]"); if (!a) return;
   const act = a.dataset.act;
   if (act === "menu") $(".app")?.classList.toggle("menu");
@@ -1954,15 +1955,18 @@ function docEditor(kind) {
     let editing = null, fromCot = null;
     if (kind === "cotizacion") d.valida = addDays(today(), 15);
     if (ctx.edit) { editing = store.get(K.col, ctx.edit); if (editing) d = JSON.parse(JSON.stringify(editing)); }
+    if (kind === "venta" && ctx.editVenta) { editing = store.get("ventas", ctx.editVenta); if (editing) { d = JSON.parse(JSON.stringify(editing)); d.ncfTipo ||= ""; } }
     if (ctx.fromCot) { fromCot = store.get("cotizaciones", ctx.fromCot); if (fromCot) Object.assign(d, { clienteId: fromCot.clienteId, tipo: fromCot.tipo, moneda: fromCot.moneda, tasa: fromCot.tasa, itbisPct: fromCot.itbisPct, notas: fromCot.notas, lineas: JSON.parse(JSON.stringify(fromCot.lineas)) }); }
     if (ctx.fromCompraProd) { const p = producto(ctx.fromCompraProd); if (p) d.lineas.push({ productoId: p.id, nombre: p.nombre, unidad: p.unidad, pesoKg: p.pesoKg || 0, cant: Math.max(1, p.minimo * 2 - p.stock), precio: p.costo }); }
     const num = editing ? editing.num : store.next(K.col, K.start);
     const nTxt = editing || !cloud.on ? "#" + num : "nueva (el número se asigna al guardar)";
     const parties = () => store.all(K.party).slice().sort((a, b) => a.nombre.localeCompare(b.nombre));
     const isSale = kind !== "compra";
-    if (kind === "venta") d.ncfTipo ||= ncfDefault(cliente(d.clienteId), d.tipo);
+    if (kind === "venta" && !editing) d.ncfTipo ||= ncfDefault(cliente(d.clienteId), d.tipo);
+    const enFactura = {}; if (kind === "venta" && editing) editing.lineas.forEach(l => enFactura[l.productoId] = (enFactura[l.productoId] || 0) + l.cant);
+    Object.defineProperty(d, "_ef", { value: enFactura, enumerable: false, writable: true });
     const ncfOpts = () => Object.keys(NCF_TIPOS).filter(t => t !== "B04" && t !== "E34" && t.startsWith(cfg.ncfModo === "E" ? "E" : "B"));
-    el.innerHTML = `<div class="vhead"><div><h1>${editing ? "Editar cotización #" + num : K.title}</h1><p>${{ venta: `Factura ${nTxt}${fromCot ? " · desde la cotización #" + fromCot.num : ""}. Al emitirla se descuenta del inventario.`, cotizacion: `Cotización ${nTxt}. No afecta el inventario hasta convertirla en factura.`, compra: `Compra ${nTxt}. Al registrarla se suma al inventario${feat("lotes") ? ", se crean los lotes" : ""} y se actualiza el costo.` }[kind]}</p></div>
+    el.innerHTML = `<div class="vhead"><div><h1>${editing ? (kind === "venta" ? "Editar factura #" : "Editar cotización #") + num : K.title}</h1><p>${{ venta: editing ? `Editando la factura #${num}${editing.ncf ? " · NCF " + editing.ncf : ""}. Al guardar, el inventario se ajusta con la diferencia.` : `Factura ${nTxt}${fromCot ? " · desde la cotización #" + fromCot.num : ""}. Al emitirla se descuenta del inventario.`, cotizacion: `Cotización ${nTxt}. No afecta el inventario hasta convertirla en factura.`, compra: `Compra ${nTxt}. Al registrarla se suma al inventario${feat("lotes") ? ", se crean los lotes" : ""} y se actualiza el costo.` }[kind]}</p></div>
       <div class="acts"><a class="btn" href="#${K.back}">Volver al listado</a></div></div>
     <div class="doc"><div class="grid" style="gap:16px">
       <section class="panel"><header><h2>Datos generales</h2><span class="small muted" data-lista></span></header><div class="grid g3" data-head>
@@ -1971,7 +1975,7 @@ function docEditor(kind) {
         ${isSale ? `<div class="field"><span>Tipo de venta</span><div class="seg" data-tipo><button type="button" data-v="Local" class="${d.tipo === "Local" ? "on" : ""}">Local</button><button type="button" data-v="Exportación" class="${d.tipo === "Exportación" ? "on" : ""}">${ic("i-globe").replace("<svg", '<svg style="width:14px;height:14px;vertical-align:-2px"')} Exportación</button></div></div>
         <label class="field"><span>Moneda</span><select class="input" name="moneda"><option value="DOP" ${d.moneda === "DOP" ? "selected" : ""}>Pesos (RD$)</option><option value="USD" ${d.moneda === "USD" ? "selected" : ""}>Dólares (US$)</option></select></label>
         <label class="field" data-tasa><span>Tasa US$ → RD$</span><input class="input" type="number" step="0.01" name="tasa" value="${d.tasa}"></label>` : `<label class="field"><span>Comprobante del proveedor (NCF)</span><input class="input" name="documento" value="${esc(d.documento || "")}" placeholder="B0100000000"></label>`}
-        ${kind === "venta" && feat("ncf") ? `<label class="field"><span>Comprobante fiscal</span><select class="input" name="ncfTipo"><option value="" ${!d.ncfTipo ? "selected" : ""}>Sin comprobante fiscal</option>${ncfOpts().map(t => `<option value="${t}" ${d.ncfTipo === t ? "selected" : ""}>${t} · ${NCF_TIPOS[t]}</option>`).join("")}</select></label>` : ""}
+        ${kind === "venta" && feat("ncf") ? `<label class="field"><span>Comprobante fiscal</span><select class="input" name="ncfTipo" ${editing?.ncf ? "disabled title='La factura ya tiene NCF asignado. Para cambiar el comprobante, anúlala y emite una nueva.'" : ""}><option value="" ${!d.ncfTipo ? "selected" : ""}>Sin comprobante fiscal</option>${ncfOpts().map(t => `<option value="${t}" ${d.ncfTipo === t ? "selected" : ""}>${t} · ${NCF_TIPOS[t]}</option>`).join("")}</select></label>` : ""}
         ${kind === "cotizacion" ? `<label class="field"><span>Válida hasta</span><input class="input" type="date" name="valida" value="${d.valida}"></label>` : `<div class="field"><span>Condición de pago</span><div class="seg" data-cond><button type="button" data-v="Contado" class="${d.condicion === "Contado" ? "on" : ""}">Contado</button><button type="button" data-v="Crédito" class="${d.condicion === "Crédito" ? "on" : ""}">Crédito</button></div></div>`}
         ${kind !== "cotizacion" ? `<label class="field" data-metodo><span>Forma de pago</span><select class="input" name="metodo">${PAGOS.map(x => `<option ${d.metodo === x ? "selected" : ""}>${x}</option>`).join("")}</select></label>` : ""}
         ${kind === "venta" ? `<label class="field" data-vence><span>Vence</span><input class="input" type="date" name="vence" value="${d.vence || addDays(d.fecha, cfg.diasCredito)}"></label>` : ""}
@@ -2007,7 +2011,7 @@ function docEditor(kind) {
         ${kind === "venta" && can("finanzas.ver") ? `<div class="small muted"><span>Ganancia estimada</span><span>${money(subDOP(d) - d.lineas.reduce((a, l) => a + (+l.cant || 0) * (producto(l.productoId)?.costo || 0), 0))}</span></div>` : ""}`;
       $("[data-count]", el).textContent = d.lineas.length ? d.lineas.length + (d.lineas.length === 1 ? " producto" : " productos") : "";
     };
-    const stockNote = l => { if (kind !== "venta") return ""; const p = producto(l.productoId); if (!p) return ""; if (esServicio(p)) return "Servicio"; const need = d.lineas.filter(x => x.productoId === l.productoId).reduce((a, x) => a + (+x.cant || 0), 0); return need > p.stock + 1e-9 ? `<span class="warn-stock">Solo hay ${qty(p.stock)} ${esc(p.unidad)}</span>` : `Disponible: ${qty(p.stock)}`; };
+    const stockNote = l => { if (kind !== "venta") return ""; const p = producto(l.productoId); if (!p) return ""; if (esServicio(p)) return "Servicio"; const need = d.lineas.filter(x => x.productoId === l.productoId).reduce((a, x) => a + (+x.cant || 0), 0); return need > p.stock + (enFactura[l.productoId] || 0) + 1e-9 ? `<span class="warn-stock">Solo hay ${qty(p.stock + (enFactura[l.productoId] || 0))} ${esc(p.unidad)}</span>` : `Disponible: ${qty(p.stock + (enFactura[l.productoId] || 0))}`; };
     const uvSel = (l, i) => feat("unidades") && pesoDe(l) ? `<select class="input uvsel" data-uv="${i}" aria-label="Unidad">${[["base", l.unidad || "Unidad"], ["lb", "Libras"], ["kg", "Kilos"]].map(([v, t]) => `<option value="${v}" ${(l.uv || "base") === v ? "selected" : ""}>${esc(t)}</option>`).join("")}</select>` : "";
     const loteRow = (l, i) => kind === "compra" && feat("lotes") ? `<div class="lote-row"><label class="field"><span>Finca / origen</span><input class="input" data-lf="finca" data-i="${i}" value="${esc(l.finca || "")}"></label><label class="field"><span>Fecha de cosecha</span><input class="input" type="date" data-lf="cosecha" data-i="${i}" value="${l.cosecha || d.fecha}"></label></div>` : "";
     const drawLines = () => {
@@ -2034,7 +2038,7 @@ function docEditor(kind) {
     const reprice = () => { if (!isSale || !d.lineas.length) return; const Lst = listaDe(cliente(d.clienteId)); d.lineas.forEach(l => { const p = producto(l.productoId); if (p) l.precio = precioPara(p, { kind, cur: cur(), tasa: d.tasa, clienteId: d.clienteId }); }); if (Lst) toast("Se aplicaron los precios de la lista " + Lst.nombre); };
     head.addEventListener("change", e => {
       const n = e.target.name;
-      if (n === "party") { d[K.key] = e.target.value; const c = store.get(K.party, e.target.value); if (isSale && c && c.tipo !== d.tipo) setTipo(c.tipo); if (kind === "venta" && c) { d.ncfTipo = ncfDefault(c, d.tipo); const s = head.querySelector("[name=ncfTipo]"); if (s) s.value = d.ncfTipo; } if (kind === "compra" && c) d.lineas.forEach(l => l.finca ||= c.ciudad ? c.nombre + " (" + c.ciudad + ")" : c.nombre); reprice(); drawLines(); }
+      if (n === "party") { d[K.key] = e.target.value; const c = store.get(K.party, e.target.value); if (isSale && c && c.tipo !== d.tipo) setTipo(c.tipo); if (kind === "venta" && c && !editing?.ncf) { d.ncfTipo = ncfDefault(c, d.tipo); const s = head.querySelector("[name=ncfTipo]"); if (s) s.value = d.ncfTipo; } if (kind === "compra" && c) d.lineas.forEach(l => l.finca ||= c.ciudad ? c.nombre + " (" + c.ciudad + ")" : c.nombre); reprice(); drawLines(); }
       else if (n === "moneda") { convert(d.moneda, e.target.value); d.moneda = e.target.value; drawLines(); }
       else if (n === "tasa") { d.tasa = +e.target.value || cfg.tasa; totals(); }
       else if (n) d[n] = e.target.value;
@@ -2045,7 +2049,7 @@ function docEditor(kind) {
       d.tipo = t; $$("[data-tipo] button", el).forEach(b => b.classList.toggle("on", b.dataset.v === t));
       const mon = t === "Exportación" ? "USD" : "DOP"; convert(d.moneda, mon); d.moneda = mon; head.querySelector("[name=moneda]").value = mon;
       d.itbisPct = t === "Exportación" ? 0 : cfg.itbis; $("[name=itbisPct]", el).value = d.itbisPct;
-      if (kind === "venta") { d.ncfTipo = ncfDefault(cliente(d.clienteId), t); const s = head.querySelector("[name=ncfTipo]"); if (s) s.value = d.ncfTipo; }
+      if (kind === "venta" && !editing?.ncf) { d.ncfTipo = ncfDefault(cliente(d.clienteId), t); const s = head.querySelector("[name=ncfTipo]"); if (s) s.value = d.ncfTipo; }
       syncHead(); drawLines();
     };
     $("[data-tipo]", el)?.addEventListener("click", e => { const b = e.target.closest("button"); if (b) setTipo(b.dataset.v); });
@@ -2064,7 +2068,7 @@ function picker(kind, d, cur, done) {
   const priceFor = p => precioPara(p, { kind, cur, tasa: d.tasa, clienteId: d.clienteId });
   const draw = () => {
     const n = norm(q); const list = store.all("productos").filter(p => p.activo !== false && (cat === "Todos" || p.categoria === cat) && (!n || norm(p.nombre + " " + p.sku).includes(n)));
-    m.$("[data-g]").innerHTML = list.map(p => { const inDoc = d.lineas.filter(l => l.productoId === p.id).reduce((a, l) => a + (+l.cant || 0), 0); const out = kind === "venta" && !esServicio(p) && p.stock <= 0;
+    m.$("[data-g]").innerHTML = list.map(p => { const inDoc = d.lineas.filter(l => l.productoId === p.id).reduce((a, l) => a + (+l.cant || 0), 0); const out = kind === "venta" && !esServicio(p) && p.stock + ((d._ef || {})[p.id] || 0) <= 0;
       return `<button class="pick" data-p="${p.id}" ${out ? "disabled" : ""}>${inDoc ? `<span class="qty">${qty(inDoc)}</span>` : ""}<span class="ph">${photo(p)}</span><span class="bd"><b>${esc(p.nombre)}</b><small>${money(priceFor(p), kind === "compra" ? "DOP" : cur)} · ${out ? "Agotado" : "Stock " + qty(p.stock)}</small></span></button>`; }).join("") || `<div class="empty">Sin productos con ese filtro.</div>`;
     m.$("[data-n]").textContent = d.lineas.length ? `${d.lineas.length} en el documento` : "Toca un producto para agregarlo";
   };
@@ -2089,7 +2093,22 @@ async function saveDoc(kind, d, { editing, fromCot }) {
   d.lineas.forEach(l => { l.cant = Math.round(+l.cant * 100000) / 100000; l.precio = Math.round(+l.precio * 10000) / 10000; });
   d.subtotal = r2(d.lineas.reduce((a, l) => a + l.cant * l.precio, 0)); d.itbis = r2(d.subtotal * (+d.itbisPct || 0) / 100); d.total = r2(d.subtotal + d.itbis);
   try {
-    if (kind === "venta") {
+    if (kind === "venta" && editing) {
+      const viejo = store.get("ventas", editing.id);
+      if (!viejo || viejo.estado === "Anulada" || (viejo.abonos || []).length || store.all("notas").some(n => n.ventaId === viejo.id && n.estado !== "Anulada")) throw new Error("Esta factura ya tiene pagos, notas de crédito o fue anulada; no se puede editar.");
+      const delta = {}; viejo.lineas.forEach(l => delta[l.productoId] = (delta[l.productoId] || 0) + l.cant); d.lineas.forEach(l => delta[l.productoId] = (delta[l.productoId] || 0) - l.cant);
+      await moverStock(Object.entries(delta).map(([id, dl]) => ({ id, delta: r2(dl) })));
+      for (const l of viejo.lineas) await lotesDevolver(l.lotes, l.cant);
+      const v = { ...viejo, ...d, id: viejo.id, num: viejo.num, v: viejo.v, usuario: viejo.usuario, editadaPor: S.user.nombre, editadaEl: today(), tasa: d.moneda === "USD" ? +d.tasa : store.config.tasa, vence: d.condicion === "Crédito" ? (d.vence || addDays(d.fecha, store.config.diasCredito)) : "" };
+      if (viejo.ncf) { v.ncf = viejo.ncf; v.ncfTipo = viejo.ncfTipo; v.ncfVence = viejo.ncfVence; }
+      else { const n = await tomarNCF(feat("ncf") ? v.ncfTipo : ""); v.ncf = n.ncf; v.ncfVence = n.vence; }
+      if (v.condicion === "Crédito") delete v.metodo;
+      for (const l of v.lineas) { const p = producto(l.productoId); l.costo = p?.costo ?? l.costo ?? 0; l.pesoKg = p?.pesoKg || 0; l.pesoBrutoKg = p?.pesoBrutoKg || 0; l.hs = p?.hs || ""; l.lotes = await lotesConsumir(l.productoId, l.cant); }
+      v.abonos = v.condicion === "Contado" ? [{ fecha: v.fecha, monto: v.total, metodo: v.metodo || "Efectivo", usuario: S.user.nombre }] : []; v.pagado = v.condicion === "Contado" ? v.total : 0; v.estado = v.condicion === "Contado" ? "Pagada" : "Pendiente";
+      store.put("ventas", v);
+      audit("Modificó", "Ventas", `Factura #${v.num}: ${cliente(v.clienteId).nombre} · ${money(viejo.total, viejo.moneda)} → ${money(v.total, v.moneda)}`);
+      toast(`Factura #${v.num} actualizada`); go("ventas"); setTimeout(() => ventaDetail(v), 60);
+    } else if (kind === "venta") {
       const v = { ...d, usuario: S.user.nombre, tasa: d.moneda === "USD" ? +d.tasa : store.config.tasa, vence: d.condicion === "Crédito" ? (d.vence || addDays(d.fecha, store.config.diasCredito)) : "", cotizacionId: fromCot?.id || "" };
       if (v.condicion === "Crédito") delete v.metodo;
       await moverStock(v.lineas.map(l => ({ id: l.productoId, delta: -l.cant })));
@@ -2185,22 +2204,32 @@ function ventaDetail(v, fresh) {
   const c = cliente(v.clienteId); const venc = v.estado === "Pendiente" && v.vence && v.vence < today();
   const notas = store.all("notas").filter(n => n.ventaId === v.id && n.estado !== "Anulada");
   const devolvible = v.lineas.some(l => l.cant - (l.devuelto || 0) > 1e-9);
+  const editable = v.estado !== "Anulada" && !(v.abonos || []).length && !notas.length && can("venta-nueva");
+  const borraPagos = can("anular") && v.estado !== "Anulada";
   const isExp = v.tipo === "Exportación" && feat("exportacion");
   const m = modal({ title: "Factura #" + v.num, size: "wide", body: `${fresh ? `<div class="note ok" style="margin-bottom:14px">${ic("i-check")}<span>Factura emitida y existencias actualizadas. Puedes imprimirla o enviarla por WhatsApp.</span></div>` : ""}
     <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px">${estadoChip(venc ? "Vencida" : v.estado)}<span class="chip plain ${v.tipo === "Exportación" ? "info" : ""}">${esc(v.tipo)}</span><span class="chip plain">${esc(v.condicion)}${v.metodo ? " · " + esc(v.metodo) : ""}</span>${v.ncf ? `<span class="chip plain">NCF ${esc(v.ncf)}</span>` : ""}</div>
-    <dl class="dl"><dt>Cliente</dt><dd>${esc(c.nombre)}${c.rnc ? ` · ${esc(c.rnc)}` : ""}</dd><dt>Fecha</dt><dd>${fdate(v.fecha)}</dd>${v.ncf ? `<dt>Comprobante</dt><dd>${esc(v.ncf)} · ${esc(NCF_TIPOS[v.ncf.slice(0, 3)] || "")}</dd>` : ""}${v.condicion === "Crédito" ? `<dt>Vence</dt><dd class="${venc ? "down" : ""}">${fdate(v.vence)}</dd>` : ""}<dt>Facturó</dt><dd>${esc(v.usuario)}</dd>${v.cotizacionId ? `<dt>Origen</dt><dd>Cotización #${store.get("cotizaciones", v.cotizacionId)?.num || "—"}</dd>` : ""}${isExp && v.emb?.booking ? `<dt>Embarque</dt><dd>${esc([v.emb.incoterm, v.emb.puertoDestino, v.emb.booking, v.emb.contenedor].filter(Boolean).join(" · "))}</dd>` : ""}${v.notas ? `<dt>Notas</dt><dd style="font-weight:400">${esc(v.notas)}</dd>` : ""}</dl>
+    <dl class="dl"><dt>Cliente</dt><dd>${esc(c.nombre)}${c.rnc ? ` · ${esc(c.rnc)}` : ""}</dd><dt>Fecha</dt><dd>${fdate(v.fecha)}</dd>${v.ncf ? `<dt>Comprobante</dt><dd>${esc(v.ncf)} · ${esc(NCF_TIPOS[v.ncf.slice(0, 3)] || "")}</dd>` : ""}${v.condicion === "Crédito" ? `<dt>Vence</dt><dd class="${venc ? "down" : ""}">${fdate(v.vence)}</dd>` : ""}<dt>Facturó</dt><dd>${esc(v.usuario)}${v.editadaPor ? ` <small class="muted">· editada por ${esc(v.editadaPor)} el ${fdate(v.editadaEl)}</small>` : ""}</dd>${v.cotizacionId ? `<dt>Origen</dt><dd>Cotización #${store.get("cotizaciones", v.cotizacionId)?.num || "—"}</dd>` : ""}${isExp && v.emb?.booking ? `<dt>Embarque</dt><dd>${esc([v.emb.incoterm, v.emb.puertoDestino, v.emb.booking, v.emb.contenedor].filter(Boolean).join(" · "))}</dd>` : ""}${v.notas ? `<dt>Notas</dt><dd style="font-weight:400">${esc(v.notas)}</dd>` : ""}</dl>
     ${linesTable(v, can("finanzas.ver"))}
     ${can("finanzas.ver") && v.estado !== "Anulada" ? `<p class="small muted" style="text-align:right;margin:6px 0 0">Ganancia bruta: <b>${money(subDOP(v) - costoVenta(v))}</b></p>` : ""}
     ${notas.length ? `<h3 style="margin:18px 0 8px">Notas de crédito</h3><div class="tbl-wrap"><table class="t"><tbody>${notas.map(n => `<tr class="click" data-nota="${n.id}"><td>NC #${n.num}${n.ncf ? " · " + esc(n.ncf) : ""}</td><td>${fdate(n.fecha)}</td><td>${esc(n.motivo || "")}</td><td class="n"><b>${money(n.total, n.moneda)}</b></td></tr>`).join("")}</tbody></table></div>` : ""}
-    ${v.estado !== "Anulada" ? `<h3 style="margin:18px 0 8px">Pagos</h3>${(v.abonos || []).length ? `<div class="tbl-wrap"><table class="t"><tbody>${v.abonos.map(a => `<tr><td>${fdate(a.fecha)}</td><td>${esc(a.metodo)}</td><td class="muted">${esc(a.usuario || "")}</td><td class="n"><b>${money(a.monto, v.moneda)}</b></td></tr>`).join("")}</tbody></table></div>` : `<p class="muted small" style="margin:0">Sin pagos registrados.</p>`}
-    <p style="text-align:right;margin:8px 0 0">Saldo pendiente: <b class="${saldo(v) > 0 ? "down" : "up"}">${money(saldo(v), v.moneda)}</b></p>` : `<div class="note" style="margin-top:14px">${ic("i-alert")}<span>Factura anulada${v.anuladaPor ? " por " + esc(v.anuladaPor) : ""}. Las existencias fueron devueltas al inventario.</span></div>`}`,
+    ${v.estado !== "Anulada" ? `<h3 style="margin:18px 0 8px">Pagos</h3>${(v.abonos || []).length ? `<div class="tbl-wrap"><table class="t"><tbody>${v.abonos.map((a, i) => `<tr><td>${fdate(a.fecha)}</td><td>${esc(a.metodo)}</td><td class="muted">${esc(a.usuario || "")}</td><td class="n"><b>${money(a.monto, v.moneda)}</b></td>${borraPagos ? `<td class="n" style="width:44px"><button class="btn sm icon ghost danger" data-delabono="${i}" title="Eliminar este pago" aria-label="Eliminar este pago">${ic("i-trash")}</button></td>` : ""}</tr>`).join("")}</tbody></table></div>` : `<p class="muted small" style="margin:0">Sin pagos registrados.</p>`}
+    <p style="text-align:right;margin:8px 0 0">Saldo pendiente: <b class="${saldo(v) > 0 ? "down" : "up"}">${money(saldo(v), v.moneda)}</b></p>` : `<div class="note" style="margin-top:14px">${ic("i-alert")}<span>Factura anulada${v.anuladaPor ? " por " + esc(v.anuladaPor) : ""}.${v.lineas.some(l => !esServicio(producto(l.productoId))) ? " Las existencias de los productos fueron devueltas al inventario." : ""}</span></div>`}`,
     foot: `${can("anular") && v.estado !== "Anulada" && !notas.length ? `<button class="btn danger" data-anular style="margin-right:auto">Anular</button>` : ""}
       ${v.estado !== "Anulada" && feat("notas") && can("notas.crear") && devolvible ? `<button class="btn" data-nc>${ic("i-swap")}Nota de crédito</button>` : ""}
       ${v.estado !== "Anulada" && can("ordenes") ? `<button class="btn" data-ot>${ic("i-board")}<span>Orden de trabajo</span></button>` : ""}
       ${isExp && v.estado !== "Anulada" ? `<button class="btn" data-emb>${ic("i-globe")}Embarque</button><button class="btn" data-ci>${ic("i-print")}Commercial invoice</button><button class="btn" data-pl>${ic("i-print")}Packing list</button>` : ""}
       ${c.telefono ? `<a class="btn" target="_blank" rel="noopener" href="${waLink(c.telefono, `Hola ${c.contacto || c.nombre}, le compartimos la factura #${v.num}${v.ncf ? " (NCF " + v.ncf + ")" : ""} de ${store.config.empresa} por ${money(v.total, v.moneda)}.${v.estado === "Pendiente" ? " Vence el " + fdate(v.vence) + "." : ""} ¡Gracias!`)}">${ic("i-wa")}WhatsApp</a>` : ""}
+      ${editable ? `<button class="btn" data-editar>${ic("i-edit")}Editar</button>` : ""}
       ${v.estado === "Pendiente" && can("pagos") ? `<button class="btn pri" data-abono>${ic("i-cash")}Registrar pago</button>` : ""}<button class="btn" data-print>${ic("i-print")}Imprimir</button>` });
   m.$("[data-print]").onclick = () => printDoc("venta", v);
+  m.$("[data-editar]")?.addEventListener("click", () => { m.close(); go("venta-nueva", { editVenta: v.id }); });
+  $$("[data-delabono]", m.el).forEach(b => b.onclick = async () => {
+    const i = +b.dataset.delabono, a = v.abonos[i]; const caja = store.all("cajas").find(x => x.fecha === a.fecha);
+    if (!await confirmBox(`Se eliminará el pago de <b>${money(a.monto, v.moneda)}</b> (${esc(a.metodo)}, ${fdate(a.fecha)}) y la factura volverá a tener ese saldo pendiente.${caja ? `<br><br><b>Atención:</b> la caja del ${fdate(a.fecha)} ya fue cerrada; su cuadre cambiará.` : ""}${(v.abonos.length === 1) ? "<br><br>Sin pagos, la factura se podrá editar." : ""}`, { ok: "Eliminar pago", danger: true, title: "Eliminar pago" })) return;
+    v.abonos = v.abonos.filter((_, k) => k !== i); v.pagado = r2(v.abonos.reduce((x, y) => x + (+y.monto || 0), 0)); v.estado = saldo(v) > .01 ? "Pendiente" : "Pagada";
+    store.put("ventas", v); audit("Eliminó pago", "Ventas", `${money(a.monto, v.moneda)} (${a.metodo}, ${a.fecha}) de la factura #${v.num}`); m.close(); route(); toast("Pago eliminado"); ventaDetail(v);
+  });
   m.$("[data-abono]")?.addEventListener("click", () => { m.close(); abonoForm(v); });
   m.$("[data-nc]")?.addEventListener("click", () => { m.close(); notaForm(v); });
   m.$("[data-emb]")?.addEventListener("click", () => { m.close(); embForm(v); });
@@ -2209,7 +2238,7 @@ function ventaDetail(v, fresh) {
   $$("[data-nota]", m.el).forEach(r => r.onclick = () => { m.close(); notaDetail(store.get("notas", r.dataset.nota)); });
   m.$("[data-ot]")?.addEventListener("click", () => { m.close(); go("ordenes"); setTimeout(() => otForm(null, { clienteId: v.clienteId, titulo: "Despacho factura #" + v.num, ventaId: v.id, lineas: v.lineas.map(l => ({ productoId: l.productoId, nombre: l.nombre, cant: l.cant })) }), 60); });
   m.$("[data-anular]")?.addEventListener("click", async () => {
-    if (!await confirmBox(`La factura #${v.num} quedará anulada y sus productos volverán al inventario. Esta acción no se puede deshacer.`, { ok: "Anular factura", danger: true })) return;
+    if (!await confirmBox(`La factura #${v.num} quedará anulada${v.lineas.some(l => !esServicio(producto(l.productoId))) ? " y sus productos volverán al inventario" : ""}. Esta acción no se puede deshacer.`, { ok: "Anular factura", danger: true })) return;
     try { await moverStock(v.lineas.map(l => ({ id: l.productoId, delta: l.cant })), { negativo: true }); } catch (x) { return toast(x.message, "err"); }
     for (const l of v.lineas) await lotesDevolver(l.lotes, l.cant);
     v.estado = "Anulada"; v.anuladaPor = S.user.nombre; store.put("ventas", v); audit("Anuló", "Ventas", `Factura #${v.num}${v.ncf ? " · " + v.ncf : ""}`); m.close(); route(); toast("Factura anulada");
@@ -2235,15 +2264,21 @@ function compraDetail(c) {
   const p = proveedor(c.proveedorId); const pagos = pagosCompra(c); const sal = saldoCompra(c);
   const m = modal({ title: "Compra #" + c.num, size: "wide", body: `<div style="display:flex;gap:8px;margin-bottom:12px">${estadoChip(c.estado)}<span class="chip plain">${esc(c.condicion)}${c.metodo ? " · " + esc(c.metodo) : ""}</span></div>
     <dl class="dl"><dt>Proveedor</dt><dd>${esc(p.nombre)}</dd><dt>Fecha</dt><dd>${fdate(c.fecha)}</dd><dt>Comprobante</dt><dd>${esc(c.documento || "—")}</dd><dt>Registró</dt><dd>${esc(c.usuario)}</dd>${c.notas ? `<dt>Notas</dt><dd style="font-weight:400">${esc(c.notas)}</dd>` : ""}</dl>${linesTable(c)}
-    ${c.estado !== "Anulada" ? `<h3 style="margin:18px 0 8px">Pagos al proveedor</h3>${pagos.length ? `<div class="tbl-wrap"><table class="t"><tbody>${pagos.map(x => `<tr><td>${fdate(x.fecha)}</td><td>${esc(x.metodo)}${x.referencia ? ` · <span class="muted">${esc(x.referencia)}</span>` : ""}</td><td class="muted">${esc(x.usuario || "")}</td><td class="n"><b>${money(x.monto)}</b></td></tr>`).join("")}</tbody></table></div>` : `<p class="muted small" style="margin:0">Sin pagos registrados.</p>`}
+    ${c.estado !== "Anulada" ? `<h3 style="margin:18px 0 8px">Pagos al proveedor</h3>${pagos.length ? `<div class="tbl-wrap"><table class="t"><tbody>${pagos.map((x, i) => `<tr><td>${fdate(x.fecha)}</td><td>${esc(x.metodo)}${x.referencia ? ` · <span class="muted">${esc(x.referencia)}</span>` : ""}</td><td class="muted">${esc(x.usuario || "")}</td><td class="n"><b>${money(x.monto)}</b></td>${can("anular") ? `<td class="n" style="width:44px"><button class="btn sm icon ghost danger" data-delpago="${i}" title="Eliminar este pago" aria-label="Eliminar este pago">${ic("i-trash")}</button></td>` : ""}</tr>`).join("")}</tbody></table></div>` : `<p class="muted small" style="margin:0">Sin pagos registrados.</p>`}
     <p style="text-align:right;margin:8px 0 0">Pagado: <b>${money(pagadoCompra(c))}</b> · Saldo pendiente: <b class="${sal > 0 ? "down" : "up"}">${money(sal)}</b></p>` : ""}`,
     foot: `${can("anular") && c.estado !== "Anulada" ? `<button class="btn danger" data-anular style="margin-right:auto">Anular</button>` : ""}${c.estado !== "Anulada" && sal > 0 && can("pagos") ? `<button class="btn pri" data-pagar>${ic("i-cash")}Registrar pago</button>` : ""}<button class="btn" data-print>${ic("i-print")}Imprimir</button>` });
   m.$("[data-print]").onclick = () => printDoc("compra", c);
+  $$("[data-delpago]", m.el).forEach(bt => bt.onclick = async () => {
+    const i = +bt.dataset.delpago, x = pagosCompra(c)[i]; const caja = store.all("cajas").find(k => k.fecha === x.fecha);
+    if (!await confirmBox(`Se eliminará el pago de <b>${money(x.monto)}</b> (${esc(x.metodo || "")}, ${fdate(x.fecha)}) y la compra volverá a tener ese saldo pendiente.${caja && x.metodo === "Efectivo" ? `<br><br><b>Atención:</b> la caja del ${fdate(x.fecha)} ya fue cerrada; su cuadre cambiará.` : ""}`, { ok: "Eliminar pago", danger: true, title: "Eliminar pago" })) return;
+    c.pagos = pagosCompra(c).filter((_, k) => k !== i); c.pagado = pagadoCompra(c); c.estado = saldoCompra(c) > .01 ? "Pendiente" : "Pagada"; if (c.estado === "Pendiente") delete c.pagadaEl;
+    store.put("compras", c); audit("Eliminó pago", "Compras", `${money(x.monto)} (${x.metodo || ""}, ${x.fecha}) de la compra #${c.num}`); m.close(); route(); toast("Pago eliminado"); compraDetail(c);
+  });
   m.$("[data-pagar]")?.addEventListener("click", () => { m.close(); pagoCompraForm(c); });
   m.$("[data-anular]")?.addEventListener("click", async () => {
     const lotUsado = feat("lotes") && c.lineas.some(l => { const lt = store.get("lotes", l.loteId); return lt && lt.disponible < lt.cantidad - 1e-9; });
     if (lotUsado) return toast("No se puede anular: parte de sus lotes ya se vendió. Haz un ajuste de inventario.", "err");
-    if (!await confirmBox(`La compra #${c.num} quedará anulada y se restarán sus productos del inventario.`, { ok: "Anular compra", danger: true })) return;
+    if (!await confirmBox(`La compra #${c.num} quedará anulada y ${c.lineas.some(l => !esServicio(producto(l.productoId))) ? "se restarán sus productos del inventario" : "no afecta el inventario porque solo contiene servicios"}.`, { ok: "Anular compra", danger: true })) return;
     try { await moverStock(c.lineas.map(l => ({ id: l.productoId, delta: -l.cant }))); } catch (x) { return toast(x.message.replace("No hay suficiente", "No se puede anular: ya se vendió parte de") , "err"); }
     c.lineas.forEach(l => { const lt = store.get("lotes", l.loteId); if (lt) { lt.disponible = 0; lt.anulado = true; store.put("lotes", lt, true); } }); store.save();
     c.estado = "Anulada"; store.put("compras", c); audit("Anuló", "Compras", `Compra #${c.num}`); m.close(); route(); toast("Compra anulada");
