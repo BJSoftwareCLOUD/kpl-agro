@@ -147,6 +147,9 @@ h3{font-size:1rem;font-weight:700}
 .brand{display:flex;align-items:center;gap:12px;padding:20px 20px 14px}
 .brand .mark{width:40px;height:40px;border-radius:12px;background:#0A1A12;display:grid;place-items:center;flex:none;overflow:hidden}
 .brand .mark img{width:100%;height:100%;object-fit:cover}
+.side-tog{margin-left:auto;background:none;border:0;color:var(--side-muted);width:34px;height:34px;border-radius:9px;display:grid;place-items:center;cursor:pointer;flex:none}
+.side-tog:hover{background:var(--side-hi);color:#fff}
+.side-tog svg{width:18px;height:18px;transition:transform .2s}
 .brand b{font-family:var(--display);font-size:1.08rem;color:#fff;display:block;line-height:1.1}
 .brand small{color:var(--side-muted);font-size:.76rem}
 .nav{flex:1;overflow-y:auto;padding:6px 12px 16px;scrollbar-width:thin;scrollbar-color:var(--side-hi) transparent}
@@ -160,8 +163,10 @@ h3{font-size:1rem;font-weight:700}
   .mini-btn{display:grid}
   .app{transition:grid-template-columns .2s}
   .app.mini{grid-template-columns:72px 1fr}
-  .app.mini .brand{padding:18px 0 12px;justify-content:center}
-  .app.mini .brand>div:last-child,.app.mini .nav a>span:not(.count),.app.mini .nav .grp,.app.mini .side-user .who{display:none}
+  .app.mini .brand{padding:16px 0 10px;justify-content:center;flex-direction:column;gap:8px}
+  .app.mini .side-tog{margin:0}
+  .app.mini .side-tog svg{transform:rotate(180deg)}
+  .app.mini .brand>div:not(.mark),.app.mini .nav a>span:not(.count),.app.mini .nav .grp,.app.mini .side-user .who{display:none}
   .app.mini .nav{padding:6px 10px 16px}
   .app.mini .ngrp.cerrado .nitems{display:block}
   .app.mini .ngrp+.ngrp{border-top:1px solid var(--side-hi);margin-top:6px;padding-top:6px}
@@ -361,9 +366,11 @@ select.input.pg-size{height:32px;width:auto;padding:0 8px;font-size:.82rem;margi
 .doc{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:16px;align-items:start}
 .doc .sum{position:sticky;top:80px;display:grid;gap:14px}
 .lines{display:grid;gap:0}
-.line{display:grid;grid-template-columns:44px minmax(0,1fr) 110px 130px 120px 36px;gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--line)}
+.line{display:grid;grid-template-columns:44px minmax(150px,1fr) 100px 120px 112px 36px;gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--line)}
 .line:first-child{border-top:0}
-.line .nm b{display:block;font-weight:600;line-height:1.25}
+.line .nm{min-width:0}
+.line .nm b{display:block;font-weight:600;line-height:1.25;overflow-wrap:anywhere}
+.lineas-panel{container-type:inline-size}
 .line .nm small{color:var(--muted);font-size:.78rem}
 .line .input{height:38px;text-align:right;font-variant-numeric:tabular-nums}
 .line .tot{text-align:right;font-weight:700;font-variant-numeric:tabular-nums}
@@ -373,7 +380,7 @@ select.input.pg-size{height:32px;width:auto;padding:0 8px;font-size:.82rem;margi
 .lote-row .input{height:36px}
 .uvsel{height:28px!important;width:auto!important;padding:0 6px!important;font-size:.78rem;text-align:left!important;margin-top:2px}
 .line .warn-stock{color:var(--chili);font-weight:600}
-.lines-head{display:grid;grid-template-columns:44px minmax(0,1fr) 110px 130px 120px 36px;gap:10px;font-size:.76rem;color:var(--muted);font-weight:600;padding-bottom:6px}
+.lines-head{display:grid;grid-template-columns:44px minmax(150px,1fr) 100px 120px 112px 36px;gap:10px;font-size:.76rem;color:var(--muted);font-weight:600;padding-bottom:6px}
 .lines-head span:nth-child(n+3){text-align:right}
 .addline{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:16px;margin-top:10px;border:1.5px dashed var(--line-2);border-radius:var(--r);background:none;cursor:pointer;color:var(--brand);font-weight:700}
 .addline:hover{background:var(--brand-soft);border-color:var(--brand)}
@@ -382,6 +389,14 @@ select.input.pg-size{height:32px;width:auto;padding:0 8px;font-size:.82rem;margi
 .totals .grand{border-top:1px solid var(--line);padding-top:12px;margin-top:4px;font-family:var(--display);font-size:1.5rem;font-weight:800;align-items:baseline}
 .totals .grand small{font-family:var(--font);font-size:.82rem;color:var(--muted);font-weight:600}
 @media (max-width:760px){
+  .lines-head{display:none}
+  .line{grid-template-columns:44px 1fr 1fr 36px;grid-template-areas:"img nm nm del" "q q p p" "t t t t";row-gap:8px;padding-top:14px}
+  .line .thumb{grid-area:img}.line .nm{grid-area:nm}.line .del{grid-area:del}
+  .line .q{grid-area:q}.line .p{grid-area:p}.line .tot{grid-area:t}
+  .lf>span{display:block!important}
+  .lote-row{padding:0 0 12px;grid-template-columns:1fr 1fr}
+}
+@container (max-width:660px){
   .lines-head{display:none}
   .line{grid-template-columns:44px 1fr 1fr 36px;grid-template-areas:"img nm nm del" "q q p p" "t t t t";row-gap:8px;padding-top:14px}
   .line .thumb{grid-area:img}.line .nm{grid-area:nm}.line .del{grid-area:del}
@@ -583,6 +598,7 @@ select.input.pg-size{height:32px;width:auto;padding:0 8px;font-size:.82rem;margi
 <symbol id="i-swap" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3l4 4-4 4M21 7H9M7 21l-4-4 4-4M3 17h12"/></symbol>
 <symbol id="i-wa" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21l1.7-5A8.5 8.5 0 1 1 8 19.4z"/><path d="M9 9.5c0 3 2.5 5.5 5.5 5.5l1-1.5-2-1-1 .8c-1-.4-1.9-1.3-2.3-2.3l.8-1-1-2z"/></symbol>
 <symbol id="i-cash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 12h.01M18 12h.01"/></symbol>
+<symbol id="i-chevs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 17l-5-5 5-5M18 17l-5-5 5-5"/></symbol>
 <symbol id="i-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></symbol>
 <symbol id="i-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M4 21h16"/></symbol>
 <symbol id="i-up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21V9M7 14l5-5 5 5M4 3h16"/></symbol>
@@ -1397,7 +1413,7 @@ function shellHTML() {
   const b3 = [["productos", "Productos", "i-box"], ["ordenes", "Órdenes", "i-board"], ["reportes", "Reportes", "i-chart"]].find(x => can(x[0]) && x[0] !== b2[0]);
   return `<div class="app ${menuModo() === "iconos" ? "mini" : ""}">
   <aside class="side" aria-label="Menú principal">
-    <div class="brand"><div class="mark">${brandMark()}</div><div><b data-empresa>${esc(store.config.empresa)}</b><small>Ventas y exportación</small></div></div>
+    <div class="brand"><div class="mark">${brandMark()}</div><div><b data-empresa>${esc(store.config.empresa)}</b><small>Ventas y exportación</small></div><button class="side-tog" data-act="mini" title="Esconder el menú" aria-label="Esconder el menú">${ic("i-chevs")}</button></div>
     <nav class="nav">${navHTML}</nav>
     <div class="side-user"><div class="avatar">${initials(S.user.nombre)}</div><div class="who" data-act="cuenta" title="Mi cuenta: cambiar usuario y contraseña" style="cursor:pointer"><b>${esc(S.user.nombre)}</b><small>${esc(S.user.rol)} · Mi cuenta</small></div><button data-act="logout" title="Cerrar sesión" aria-label="Cerrar sesión">${ic("i-out")}</button></div>
   </aside>
@@ -1459,7 +1475,7 @@ function render() {
 }
 
 /* ---------------- Login ---------------- */
-const APP_VERSION = "2026.11.21-1";
+const APP_VERSION = "2026.11.21-2";
 const VENDOR = { nombre: "SP BJ SOFTWARE", instagram: "@bjsoftware", telefono: "849-473-3173" };
 /* Logo de BJ Software: hexágono con cubo */
 const bjHex = (size = 40) => `<svg viewBox="0 0 64 64" width="${size}" height="${size}" role="img" aria-label="BJ Software"><polygon points="32,5 55.4,18.5 55.4,45.5 32,59 8.6,45.5 8.6,18.5" fill="none" stroke="#F28C1B" stroke-width="5" stroke-linejoin="round"/><polygon points="32,19 43.5,25.5 32,32 20.5,25.5" fill="#FFB65C"/><polygon points="20.5,25.5 32,32 32,45 20.5,38.5" fill="#F59B2E"/><polygon points="43.5,25.5 32,32 32,45 43.5,38.5" fill="#DB720C"/></svg>`;
@@ -1612,7 +1628,8 @@ document.addEventListener("click", e => {
   else if (act === "theme") toggleTheme();
   else if (act === "palette") palette();
   else if (act === "grupo") toggleGrupo(a);
-  else if (act === "mini") { const actual = menuModo(); if (actual === "iconos") lsSet("menu-modo", lsGet("menu-modo-ant", "completo")); else { lsSet("menu-modo-ant", actual); lsSet("menu-modo", "iconos"); } $(".app")?.classList.toggle("mini", menuModo() === "iconos"); setTimeout(ajustarKpisLuego, 250); }
+  else if (act === "mini" && innerWidth <= 980) $(".app")?.classList.remove("menu");
+  else if (act === "mini") { const actual = menuModo(); if (actual === "iconos") lsSet("menu-modo", lsGet("menu-modo-ant", "completo")); else { lsSet("menu-modo-ant", actual); lsSet("menu-modo", "iconos"); } $(".app")?.classList.toggle("mini", menuModo() === "iconos"); $$(".side-tog").forEach(b => { const t = menuModo() === "iconos" ? "Mostrar el menú" : "Esconder el menú"; b.title = t; b.setAttribute("aria-label", t); }); setTimeout(ajustarKpisLuego, 250); }
   else if (act === "cuenta") miCuenta();
   else if (act === "online") presenceModal();
   else if (act === "logout") confirmBox("Se cerrará tu sesión en este dispositivo.", { ok: "Cerrar sesión" }).then(y => y && logout());
@@ -1980,7 +1997,7 @@ function docEditor(kind) {
         ${kind !== "cotizacion" ? `<label class="field" data-metodo><span>Forma de pago</span><select class="input" name="metodo">${PAGOS.map(x => `<option ${d.metodo === x ? "selected" : ""}>${x}</option>`).join("")}</select></label>` : ""}
         ${kind === "venta" ? `<label class="field" data-vence><span>Vence</span><input class="input" type="date" name="vence" value="${d.vence || addDays(d.fecha, cfg.diasCredito)}"></label>` : ""}
       </div></section>
-      <section class="panel"><header><h2>Productos</h2><span class="small muted" data-count></span></header>
+      <section class="panel lineas-panel"><header><h2>Productos</h2><span class="small muted" data-count></span></header>
         <div class="lines-head"><span></span><span>Producto</span><span>Cantidad</span><span>Precio</span><span>Total</span><span></span></div>
         <div class="lines" data-lines></div>
         <button class="addline" data-add>${ic("i-plus")}Agregar productos</button></section>
